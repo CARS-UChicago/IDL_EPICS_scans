@@ -24,35 +24,431 @@ function epics_sscan::getColor, index
    color = colors[*,j]
    return, color
 end
-
 
-pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, $
-                        all=all, grid=grid, z_slice=z_slice, _extra=extra
-   if (n_elements(scan) eq 0) then scan=self.fileHeader.rank
-   if (n_elements(z_slice) eq 0) then z_slice=0
-   scan = (scan>1) < self.fileHeader.rank
-   if (n_elements(positioner) eq 0) then positioner=1
-   sh = (*self.scanHeader)[scan-1]
-   if (sh.numDetectors lt 1) then begin
-      print, 'No detectors, nothing to display!'
-     return  ; Nothing to display
+
+function epics_sscan::getPositioner, scan=scan, positioner=positioner, all=all, copy=copy
+;+
+; NAME:
+;   epics_sscan::getPositioner
+;
+; PURPOSE:
+;   This function returns the positioner information for a scan.
+;   The information is returned as an array of {epics_sscanPositioner}
+;   structures.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   Result = scan->getPositioner()
+;
+; KEYWORD PARAMETERS:
+;   SCAN:
+;      The scan for which positioner information will be returned.
+;      The default is the innermost scan.  Valid range=1 to the "rank" of
+;      the overall dataset, e.g. 1 for a 1-D scan, 2 for a 2-D scan, etc.
+;
+;   POSITIONER:
+;      The number of the positioner to return.  Valid range=1 to number of
+;      positioners in this scan.  Default=1, the first positioner for this
+;      scan.
+;
+;   ALL:
+;      Set this flag to return an array of all of the positioners for this
+;      scan.
+;
+;  COPY:
+;      Set this flag to return a copy of the positioner data, rather than
+;      having the pointer in the {epics_sscanPositioner} structure point to
+;      the original data in the epics_sscan object.  Set this flag if you
+;      will be modifying the data.
+;
+; OUTPUTS:
+;   This function returns an array of {epics_sscanPositioner}
+;   structures.  The number of elements in this array will be 1 by default,
+;   or if the POSITIONER keyword is specified.  If the ALL keyword is specified
+;   then the array dimension will be the total number of positioners in this scan.
+;
+;   If there are no positioners for this scan, this function will return
+;   a new {epics_sscanPositioner} structure, with the data set to the array
+;   index in the data, e.g [0,1,2,3,..NPTS-1]
+;
+
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> p=s->getPositioner(scan=2)
+;   IDL> print, *p.pData
+;      -10.000000      -9.5000000      -9.0000000      -8.5000000      -8.0000000      -7.5000000      -7.0000000
+;      -6.5000000      -6.0000000      -5.5000000      -5.0000000      -4.5000000      -4.0000000      -3.5000000      -3.0000000
+;      -2.5000000      -2.0000000      -1.5000000      -1.0000000     -0.50000000      0.00000000      0.50000000       1.0000000
+;       1.5000000       2.0000000       2.5000000       3.0000000       3.5000000       4.0000000       4.5000000       5.0000000
+;       5.5000000       6.0000000       6.5000000       7.0000000       7.5000000       8.0000000       8.5000000       9.0000000
+;       9.5000000       10.000000
+;   IDL> print, p.description
+;      PM500_X
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
+if (n_elements(scan) eq 0) then scan=self.fileHeader.rank
+   if ((scan lt 1) or (scan gt self.fileHeader.rank)) then begin
+      print, 'Invalid scan'
+      return, -1
    endif
-   positioner = (positioner>1) < sh.numPositioners
-   if (positioner gt 0) then begin
-      p = (*sh.positioners)[positioner-1]
+   if (n_elements(positioner) eq 0) then positioner=1
+   sh = (*self.fileHeader.pScanHeader)[scan-1]
+   if ((sh.numPositioners gt 0) and  $
+       ((positioner lt 1) or (positioner gt sh.numPositioners))) then begin
+      print, 'Invalid positioner'
+      return, -1
+   endif
+   if (sh.numPositioners gt 0) then begin
+      if (keyword_set(all)) then begin
+         p = *sh.pPositioners
+      endif else begin
+         p = (*sh.pPositioners)[positioner-1]
+      endelse
    endif else begin
       p = {epics_sscanPositioner}
-      p.data = ptr_new(findgen(sh.npts))
+      p.pData = ptr_new(findgen(sh.npts))
    endelse
+   if (keyword_set(copy)) then begin
+      for i=0, n_elements(p)-1 do p[i].pData = ptr_new(*p[i].pData)
+   endif
+   return, p
+end
+
+
+function epics_sscan::getDetector, scan=scan, detector=detector, all=all, copy=copy
+;+
+; NAME:
+;   epics_sscan::getDetector
+;
+; PURPOSE:
+;   This function returns the detector information for a scan.
+;   The information is returned as an array of {epics_sscanDetector}
+;   structures.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   Result = scan->getDetector()
+;
+; KEYWORD PARAMETERS:
+;   SCAN:
+;      The scan for which detector information will be returned.
+;      The default is the innermost scan.  Valid range=1 to the "rank" of
+;      the overall dataset, e.g. 1 for a 1-D scan, 2 for a 2-D scan, etc.
+;
+;   DETECTOR:
+;      The number of the detector to return.  Valid range=1 to number of
+;      detectors in this scan.  Default=1, the first detector for this
+;      scan.
+;
+;   ALL:
+;      Set this flag to return an array of all of the detectors for this
+;      scan.
+;
+;  COPY:
+;      Set this flag to return a copy of the detector data, rather than
+;      having the pointer in the {epics_sscanDetector} structure point to
+;      the original data in the epics_sscan object.  Set this flag if you
+;      will be modifying the data.
+;
+; OUTPUTS:
+;   This function returns an array of {epics_sscanDetector}
+;   structures.  The number of elements in this array will be 1 by default,
+;   or if the DETECTOR keyword is specified.  If the ALL keyword is specified
+;   then the array dimension will be the total number of detectors in this scan.
+;
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> d=s->getDetector(scan=2, detector=6)
+;   IDL> print, (*d.pData)[5:7,6:8]
+;      49.0000      54.0000      60.0000
+;      51.0000      39.0000      61.0000
+;      64.0000      45.0000      51.0000
+;   IDL> print, d.name
+;      2idd:mca1.R1
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
+   if (n_elements(scan) eq 0) then scan=self.fileHeader.rank
+   if ((scan lt 1) or (scan gt self.fileHeader.rank)) then begin
+      print, 'Invalid scan'
+      return, -1
+   endif
    if (n_elements(detector) eq 0) then detector=1
-   detector = (detector>1) < sh.numDetectors
+   sh = (*self.fileHeader.pScanHeader)[scan-1]
+   if (sh.numDetectors lt 1) then begin
+      print, 'No detectors!'
+      return, -1
+   endif
+   if ((min(detector) lt 1) or (max(detector) gt sh.numDetectors)) then begin
+      print, 'Invalid detector'
+      return, -1
+   endif
    if (keyword_set(all)) then begin
-      d = *sh.detectors
+      d = *sh.pDetectors
    endif else begin
-      d = (*sh.detectors)[detector-1]
+      d = (*sh.pDetectors)[detector-1]
    endelse
+   if (keyword_set(copy)) then begin
+      for i=0, n_elements(d)-1 do d[i].pData = ptr_new(*d[i].pData)
+   endif
+   return, d
+end
+
+
+function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=positioner, all=all, $
+                                   xrange=xrange, yrange=yrange, zrange=zrange, $
+                                   xtotal=xtotal, ytotal=ytotal, ztotal=ztotal
+;+
+; NAME:
+;   epics_sscan::getData
+;
+; PURPOSE:
+;   This function returns the positioner and detector information for a scan.
+;   The information is returned as an array of {epics_sscanPositioner}
+;   and {epics_sscanDetector} structures.  The subset of the data to be returned
+;   can be specified.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   Result = scan->getData(PositionArray, DetectorArray)
+;
+; KEYWORD PARAMETERS:
+;   SCAN:
+;      The scan for which information will be returned.
+;      Passed to epics_sscan::getPositioner() and epics_sscan::getDetector().
+;
+;   POSITIONER:
+;      The number of the positioner to return.
+;      Passed to epics_sscan::getPositioner().
+;
+;   DETECTOR:
+;      The number of the detector to return.
+;      Passed to epics_sscan::getDetector().
+;
+;   ALL:
+;      Set this flag to return an array of all of the detectors for this
+;      scan. Passed to epics_sscan::getDetector()
+;
+;   [X,Y,Z]RANGE:
+;      Used this keyword to restrict the range of array elements returned in
+;      the X, Y, or Z dimensions.  Each can be either:
+;         - A scaler, in which case a single array element is returned in
+;            that direction
+;         - A 2-element array, in which case a range of array elements are
+;           returned in that direction
+;
+;   [X,Y,Z]TOTAL:
+;      Set this flag to sum over the array elements in the X, Y, or Z
+;      dimensions.  The summation is performed after application of the
+;      [X,Y,Z]RANGE keyword, so it is possible to sum over a restricted
+;      range of array elements.  Each use of this keyword will reduce the
+;      rank of the detector data by 1.  It will also change which positioner
+;      arrays are returned, since positioner arrays are not returned for
+;      axes with only one element.
+;
+; OUTPUTS:
+;   This function returns a status flag, 0 for success, -1 for failure.
+;
+;   The positioner information is returned in the PositionArray parameter
+;   as array of {epics_sscanPositioner} structures.
+;
+;   The detector information is returned in the DetectorArray parameter
+;   as array of {epics_sscanDetector} structures.
+
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> status=s->getData(p, d, scan=2, /all)
+;   IDL> print, p[0].description, '  ', p[1].description
+;      PM500_X  PM500_Y
+;   IDL> help, d
+;      D     STRUCT    = -> EPICS_SSCANDETECTOR Array[47]
+;   IDL> status=s->getData(p, d, scan=2, detector=10, /ytotal, yrange=[10,20])
+;   IDL> help, *d.pData
+;      <PtrHeapVar74409>
+;         FLOAT     = Array[41]
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
+   if (n_elements(scan) eq 0) then scan=self.fileHeader.rank
+   if ((scan lt 1) or (scan gt self.fileHeader.rank)) then begin
+      print, 'Invalid scan'
+      return, -1
+   endif
+   d = self->getDetector(scan=scan, detector=detector, all=all, /copy)
+   if (size(d, /tname) ne 'STRUCT') then return, -1
    n_detectors = n_elements(d)
-   data = *d[0].data
+   data_rank = size(*d[0].pData, /n_dimensions)
+   dims = size(*d[0].pData, /dimensions)
+   p = replicate({epics_sscanPositioner}, data_rank)
+   p[0] = self->getPositioner(scan=scan, positioner=positioner, /copy)
+   if (size(p[0], /tname) ne 'STRUCT') then return, -1
+   for i=1, data_rank-1 do begin
+      p[i] = self->getPositioner(scan=scan-i, /copy)
+      if (size(p[i], /tname) ne 'STRUCT') then return, -1
+   endfor
+   ; Need to make a copy of the data so we don't modify original data in self
+   ; Process the [z,y,z]range keywords
+   if ((data_rank ge 3) and (n_elements(zrange) ne 0)) then begin
+      if (n_elements(zrange) eq 1) then begin
+         zrange = [zrange, zrange]
+         dims[2] = 1
+      endif else dims[2] = zrange[1]-zrange[0]+1
+      *p[2].pData = (*p[2].pData)[zrange[0]:zrange[1]]
+      for i=0, n_detectors-1 do begin
+         *d[i].pData = reform((*d[i].pData)[*,*,zrange[0]:zrange[1]], dims)
+      endfor
+   endif
+   if ((data_rank ge 2) and (n_elements(yrange) ne 0)) then begin
+      if (n_elements(yrange) eq 1) then begin
+         yrange = [yrange, yrange]
+         dims[1] = 1
+      endif else dims[1] = yrange[1]-yrange[0]+1
+      *p[1].pData = (*p[1].pData)[yrange[0]:yrange[1]]
+      for i=0, n_detectors-1 do begin
+         *d[i].pData = reform((*d[i].pData)[*,yrange[0]:yrange[1],*], dims)
+      endfor
+   endif
+   if (n_elements(xrange) ne 0) then begin
+      if (n_elements(xrange) eq 1) then begin
+         xrange = [xrange, xrange]
+         dims[0] = 1
+      endif else dims[0] = xrange[1]-xrange[0]+1
+      *p[0].pData = (*p[0].pData)[xrange[0]:xrange[1]]
+      for i=0, n_detectors-1 do begin
+         *d[i].pData = reform((*d[i].pData)[xrange[0]:xrange[1],*,*], dims)
+      endfor
+   endif
+   ; Process the [x,y,z]total keywords
+   if ((data_rank gt 2) and (n_elements(ztotal) ne 0)) then begin
+      dims[2] = 1
+      for i=0, n_detectors-1 do *d[i].pData = total(*d[i].pData, 3)
+   endif
+   if ((data_rank gt 1) and (n_elements(ytotal) ne 0)) then begin
+      dims[1] = 1
+      for i=0, n_detectors-1 do *d[i].pData = total(*d[i].pData, 2)
+   endif
+   if (n_elements(xtotal) ne 0) then begin
+      dims[0] = 1
+      for i=0, n_detectors-1 do *d[i].pData = total(*d[i].pData, 1)
+   endif
+   ; Eliminate any redundant dimensions
+   for i=0, n_detectors-1 do *d[i].pData = reform(*d[i].pData)
+   ; Return array of valid positioners
+   valid_dims = where((dims gt 1), count)
+   if (count le 0) then return, -1
+   p = p(valid_dims)
+end
+
+
+pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, all=all, $
+                          xrange=xrange, yrange=yrange, zrange=zrange, $
+                          xtotal=xtotal, ytotal=ytotal, ztotal=ztotal, $
+                          grid=grid, $
+                          _extra=extra
+;+
+; NAME:
+;   epics_sscan::display
+;
+; PURPOSE:
+;   This procedure displays scan data using the IDL iTools.
+;
+;   If the resulting data (after application of any keywords) is 1-D, then
+;   an iPlot tool is created or modified.
+;
+;   If the resulting data is 2-d then an iImage tool is created.  This
+;   display can be interactively modified to display contours and/or
+;   surfaces.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   scan->display
+;
+; KEYWORD PARAMETERS:
+;   SCAN:
+;      The scan for which information will be returned.
+;      Default is the innermost scan in this scan object.
+;      Passed to epics_sscan::getData().
+;
+;   POSITIONER:
+;      The number of the positioner to display.
+;      Passed to epics_sscan::getData().
+;
+;   DETECTOR:
+;      The number of the detector(s) to display.
+;      Passed to epics_sscan::getData().
+;
+;   ALL:
+;      Set this flag to display all of the detectors for this
+;      scan. Passed to epics_sscan::getData()
+;
+;   [X,Y,Z]RANGE:
+;      Used this keyword to restrict the range of array elements display in
+;      the X, Y, or Z dimensions.  Passed to epics_sscan::getData()
+;
+;   [X,Y,Z]TOTAL:
+;      Set this flag to sum over the array elements in the X, Y, or Z
+;      dimensions.  Passed to epics_sscan::getData()
+;
+;   GRID:
+;      Set this flag to display multiple detectors in separate dataspaces
+;      within this iTool, layed out in a grid format.
+;
+;      If this keyword is not specified, and there are multiple detectors
+;      selected then the iTool /OVERPLOT keyword is used.  For 1-D data this
+;      results in multiple traces on the same plot, which each done in a
+;      different color and plot symbol.  For 2-D data the images are plotted
+;      on top of one another.  To browse through the images use the right mouse
+;      button in the image or Visualization Browser to change this display
+;      order (Send to Back, etc.).
+;
+;   Other:
+;      Any unrecognized keywords will be passed to the iPlot or iImage
+;      procedures via the _EXTRA mechanism.  This allows one to specify,
+;      for example, /VIEW_NEXT, to put the display in an existing iTool
+;      rather than creating a new one.
+;
+; RESTRICTIONS:
+;    The display is currently limited to 1-D and 2-D data.  Slices or
+;    sums of 3-D or 4-D data can be displayed in 1-D or 2-D using the
+;    [X,Y,Z]RANGE and/or [X,Y,Z]TOTAL keywords.
+;
+;    A plot legend should be automatically created for 1-D data with
+;    multiple detectors.  I don't know how to do this yet.  However, it
+;    is easy to manually create a legend: click in the dataspace (away
+;    from any curves) and then use Insert/Legend from the menu.
+;
+;    An image title should be automatically placed above each image.
+;    I don't know how to do this yet.  Titles can be added manually with
+;    the annotation tools.
+;
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> s->display               ; Displays the first detector in scan2
+;   IDL> s->display, /all, /grid  ; Note this takes a minute or so, since
+;                                 ; 47 images are created in one iTool
+;   IDL> s->display, detector=10, /ytotal ; 1-D plot of sum over all rows
+;   IDL> s->display, scan=1, /view_next ; Plot of outer scan, same window
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
+   status = self->getData(p, d, scan=scan, detector=detector, all=all, positioner=positioner, $
+                         xrange=xrange, yrange=yrange, zrange=zrange, $
+                         xtotal=xtotal, ytotal=ytotal, ztotal=ztotal)
+   if (status ne 0) then return
+   n_detectors = n_elements(d)
    overplot = 1
    if ((keyword_set(grid)) and (n_detectors gt 0)) then begin
       ny = fix(sqrt(n_detectors))
@@ -63,18 +459,16 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, $
       overplot = 0
    endif
    if ((n_detectors > 4) and (overplot eq 0)) then tickfont_size=7 else tickfont_size=10
-   data_rank = size(data, /n_dimensions)
+   data_rank = size(*d[0].pData, /n_dimensions)
    if (data_rank gt 1) then begin
       ; Get the data and title for the previous ("slow") positioner for 2-D data
-      slow_sh = (*self.scanHeader)[scan-2]
-      if (slow_sh.numPositioners gt 0) then begin
-         slow_p = (*slow_sh.positioners)[0]
-      endif else begin
-         slow_p = {epics_sscanPositioner}
-         slow_p.data = ptr_new(slow_sh.npts)
-      endelse
-      slow_data = *slow_p.data
-      slow_title = slow_p.description + ' ' + slow_p.units + ' ('+slow_p.name+')'
+      slow_data = *p[1].pData
+      ; This data must be evenly spaced for it to work with iimage.  The following should not change
+      ; the array, but it might if the axis step size is not uniform
+      step = slow_data[1] - slow_data[0]
+      if (step eq 0) then step=1.
+      slow_data = slow_data[0] + findgen(n_elements(slow_data)) * step
+      slow_title = p[1].description + ' ' + p[1].units + ' ('+p[1].name+')'
    endif
    for i=0, n_detectors-1 do begin
       if (overplot) then begin
@@ -88,16 +482,16 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, $
       if (strlen(description) gt 0) then name=description else name=d[i].name
       if ((n_detectors eq 1) or (keyword_set(grid))) then ytitle=name else ytitle=''
       if (i eq 0) then begin
-         x = *p.data
-         xtitle = p.description + ' ' + p.units + ' ('+p.name+')'
+         x = *p[0].pData
+         xtitle = p[0].description + ' ' + p[0].units + ' ('+p[0].name+')'
         case data_rank of
          1: begin
                ; Get the min and max of this data set so we can adjust
-               ymin = min(data, max=ymax)
+               ymin = min(*d[i].pData, max=ymax)
                yspan = ymax-ymin
                if (yspan eq 0) then yspan=10
                yrange = [ymin-.1*yspan, ymax+.1*yspan]
-               iplot, x, *d[i].data, _extra=extra, $
+               iplot, x, *d[i].pData, _extra=extra, $
                   yrange=yrange, $
                   ytitle=ytitle, xtitle=xtitle, $
                   title=self.fileHeader.fileName, $
@@ -106,30 +500,22 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, $
                   xtickfont_size=tickfont_size, ytickfont_size=tickfont_size
             end
          2: begin
-               iimage, *d[i].data, x, slow_data, _extra=extra, $
-                  ytitle=slow_title, xtitle=xtitle, $
-                  title=self.fileHeader.fileName, $
-                  name=name, view_grid=view_grid, $
-                  xtickfont_size=tickfont_size, ytickfont_size=tickfont_size
-            end
-         3: begin
-               data = reform((*d[i].data)[*,*,z_slice])
-               iimage, data, x, slow_data, _extra=extra, $
+               iimage, *d[i].pData, x, slow_data, _extra=extra, $
                   ytitle=slow_title, xtitle=xtitle, $
                   title=self.fileHeader.fileName, $
                   name=name, view_grid=view_grid, $
                   xtickfont_size=tickfont_size, ytickfont_size=tickfont_size
             end
          else: begin
-               print, 'Only rank 1-3 supported for now'
+               print, 'Only rank 1-2 supported for now'
             end
          endcase
       endif else begin
          case data_rank of
          1: begin
                ; Get the min and max of this data set so we can adjust
-               ymin1=min(*d[i].data, max=ymax1)
-               if (overplot) then begin 
+               ymin1=min(*d[i].pData, max=ymax1)
+               if (overplot) then begin
                   ymin = ymin < ymin1 & ymax = ymax > ymax1
                endif else begin
                   ymin = ymin1        & ymax = ymax1
@@ -137,7 +523,7 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, $
                yspan = ymax-ymin
                if (yspan eq 0) then yspan=10
                yrange= [ymin-.1*yspan, ymax+.1*yspan]
-               iplot, x, *d[i].data, view_next=view_next, overplot=overplot, $
+               iplot, x, *d[i].pData, view_next=view_next, overplot=overplot, $
                   yrange=yrange, $
                   ytitle=ytitle, xtitle=xtitle, $
                   name=name, sym_index=sym_index, $
@@ -145,22 +531,14 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, $
                   xtickfont_size=tickfont_size, ytickfont_size=tickfont_size
             end
          2: begin
-               iimage, *d[i].data, x, slow_data, $
+               iimage, *d[i].pData, x, slow_data, $
                   ytitle=slow_title, xtitle=xtitle, $
                   view_next=view_next, overplot=overplot, $
                   name=name, _extra=extra, $
                   xtickfont_size=tickfont_size, ytickfont_size=tickfont_size
             end
-         3: begin
-               data = reform((*d[i].data)[*,*,z_slice])
-               iimage, data, x, slow_data, $
-                  ytitle=slow_title, xtitle=xtitle, $
-                  view_next=view_next, overplot=overplot, name=name, $
-                  _extra=extra, $
-                  xtickfont_size=tickfont_size, ytickfont_size=tickfont_size
-            end
          else: begin
-               print, 'Only rank 1-3 supported for now'
+               print, 'Only rank 1-2 supported for now'
             end
          endcase
       endelse
@@ -169,7 +547,58 @@ end
 
 
 pro epics_sscan::print, positioners=positioners, detectors=detectors, $
-                      extraPVs=extraPVs, all=all, output=output
+                      extraPVs=extraPVs, all=all, output=output, display=display
+;+
+; NAME:
+;   epics_sscan::print
+;
+; PURPOSE:
+;   This procedure converts scan data to ASCII format.  It can be saved
+;   in a file, and/or displayed in a text window.  The default is to print
+;   only header information to a temporary file, and then display that file
+;   in a window using the IDL XDISPLAYFILE procedure.  Keywords can be used
+;   to control what information is output, the name of the output file, and
+;   whether the file is displayed.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   scan->print
+;
+; KEYWORD PARAMETERS:
+;
+;   POSITIONERS:
+;      Set this flag to output the positioner data.
+;
+;   DETECTORS:
+;      Set this flag to output the detector data.
+;
+;   EXTRAPVS:
+;      Set this flag to output the extra PV data.
+;
+;   ALL:
+;      Equivalent to /POSITIONERS, /DETECTORS, /EXTRAPVS
+;
+;   OUTPUT:
+;      Set this keyword to the name of an output to write the ASCII
+;      data too.  Don't forget to use /ALL if you want to dump the entire
+;      scan.
+;
+;   DISPLAY:
+;      Set this flag to display the output file in a window using XDISPLAYFILE.
+;      The default is DISPLAY=1 if the OUTPUT keyword is not specified, and
+;      DISPLAY=0 if the output keyword is specified.
+;
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> s->print           ; Display the header information to a window
+;   IDL> s->print, /all     ; Display everything to a window
+;   IDL> s->print, /all, output='2idd_0087.ASCII'
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
    if (keyword_set(all)) then begin
       positioners=1
       detectors=1
@@ -178,14 +607,17 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
    if (n_elements(output) eq 0) then begin
       tmpdir = getenv('IDL_TMPDIR')
       output = tmpdir+'epics_sscan.tmp'
-   endif
+      if (n_elements(display) eq 0) then display=1
+   endif else begin
+      if (n_elements(display) eq 0) then display=0
+   endelse
    openw, lun, /get, output
    printf, lun, 'File name:  ', self.fileHeader.fileName
    printf, lun, 'Version:    ', self.fileHeader.version
-   printf, lun, 'Dimensions: ', self->formatDimensions(*self.fileHeader.dims)
+   printf, lun, 'Dimensions: ', self->formatDimensions(*self.fileHeader.pDims)
    for i=0, self.fileHeader.rank-1 do begin
       printf, lun
-      sh = (*self.scanHeader)[i]
+      sh = (*self.fileHeader.pScanHeader)[i]
       printf, lun, 'Scan:             ', i+1
       printf, lun, '   Num. points:      ', sh.npts
       printf, lun, '   Last point:       ', sh.cpt
@@ -196,7 +628,7 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
       printf, lun, '   Num. triggers:    ', sh.numTriggers
       if (1) then begin
          for j=0, sh.numPositioners-1 do begin
-            p = (*sh.positioners)[j]
+            p = (*sh.pPositioners)[j]
             printf, lun, '   Positioner: ', j+1
             printf, lun, '      Name:        ', p.name
             printf, lun, '      Description: ', p.description
@@ -206,7 +638,7 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
             printf, lun, '         Name:         ', p.readbackName
             printf, lun, '         Description:  ', p.readbackDescription
             printf, lun, '         Units:        ', p.readbackDescription
-            data = *p.data
+            data = *p.pData
             dims = size(data, /dimensions)
             printf, lun, '      Dimensions: '+self->formatDimensions(dims)
             if (keyword_set(positioners)) then begin
@@ -215,18 +647,18 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
             endif
          endfor
          for j=0, sh.numTriggers-1 do begin
-            t = (*sh.triggers)[j]
+            t = (*sh.pTriggers)[j]
             printf, lun, '   Trigger: ', j+1
             printf, lun, '      Name:    ', t.name
             printf, lun, '      Command: ', t.command
          endfor
          for j=0, sh.numDetectors-1 do begin
-            d = (*sh.detectors)[j]
+            d = (*sh.pDetectors)[j]
             printf, lun, '   Detector: ', j+1
             printf, lun, '      Name:        ', d.name
             printf, lun, '      Description: ', d.description
             printf, lun, '      Units:       ', d.units
-            data = *d.data
+            data = *d.pData
             dims = size(data, /dimensions)
             printf, lun, '      Dimensions: '+self->formatDimensions(dims)
             if (keyword_set(detectors)) then begin
@@ -236,39 +668,30 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
          endfor
       endif
    endfor
-   if ((keyword_set(extraPVs)) and (self.fileHeader.extraPointer gt 0)) then begin
-      for j=0, self.fileHeader.numExtra-1 do begin
-         e = (*self.extraPVs)[j]
-         printf, lun, 'Extra PV: ', j+1
-         printf, lun, '   Name:        ', e.name
-         printf, lun, '   Description: ', e.description
-         printf, lun, '   Units:       ', e.units
-         printf, lun, '   Value:       ', *e.value
-      endfor
+   if (keyword_set(extraPVs)) then begin
+      printf, lun
+      printf, lun, 'Num. Extra PVs:', self.fileHeader.numExtra
+      ; We need the following conditional for reading incomplete scan files
+      if (self.extraPointer gt 0) then begin
+         for j=0, self.fileHeader.numExtra-1 do begin
+            e = (*self.fileHeader.pExtraPVs)[j]
+            printf, lun, '   Extra PV: ', j+1
+            printf, lun, '      Name:        ', e.name
+            printf, lun, '      Description: ', e.description
+            printf, lun, '      Units:       ', e.units
+            printf, lun, '      Value:       ', *e.pValue
+         endfor
+      endif
    endif
    free_lun, lun
-   xdisplayfile, output, title=self.fileHeader.fileName
+   if (display) then xdisplayfile, output, title=self.fileHeader.fileName
 end
 
 
-function epics_sscan::getFileHeader
-   return, self.fileHeader
-end
-
-function epics_sscan::getScanHeader
-   return, *self.scanHeader
-end
-
-function epics_sscan::getExtraPVs
-   return, self.extraPVs
-end
-
-
-
-pro epics_sscan::readExtraPVs
+pro epics_sscan::readMDAExtraPVs
    lun = self.lun
-   if (self.fileHeader.extraPointer le 0) then return
-   point_lun, lun, self.fileHeader.extraPointer
+   if (self.extraPointer le 0) then return
+   point_lun, lun, self.extraPointer
    ; From db_access.h
    DBR_STRING = 0
    DBR_CTRL_STRING = 28
@@ -309,16 +732,13 @@ pro epics_sscan::readExtraPVs
          end
       endcase
       readu, lun, value
-      ptr_free, extraPVs[i].value
-      extraPVs[i].value = ptr_new(value, /no_copy)
+      extraPVs[i].pValue = ptr_new(value, /no_copy)
    endfor
-   ptr_free, self.extraPVs
-   self.extraPVs = ptr_new(extraPVs, /no_copy)
+   self.fileHeader.pExtraPVs = ptr_new(extraPVs, /no_copy)
 end
 
-
 
-pro epics_sscan::readScanHeader
+pro epics_sscan::readMDAScanHeader
    lun = self.lun
    rank=0S & npts=0S & cpt=0S
    readu, lun, rank, npts, cpt
@@ -360,7 +780,7 @@ pro epics_sscan::readScanHeader
          triggers[i] = p
       endfor
    endif
-   if (numPositioners gt 0) then begin 
+   if (numPositioners gt 0) then begin
       positionerData = dblarr(npts, numPositioners)
       readu, lun, positionerData
    endif
@@ -370,157 +790,433 @@ pro epics_sscan::readScanHeader
    endif
 
    index = self.fileHeader.rank - rank
-   if ((*self.scanHeader)[index].rank eq 0) then begin
+   if ((*self.fileHeader.pScanHeader)[index].rank eq 0) then begin
       ; This is the first scan of this rank.  Copy information to the scanHeader
       scanHeader = {epics_sscanScanHeader}
       scanHeader.rank = rank
       scanHeader.npts = npts
       scanHeader.cpt  = cpt
-      if (rank gt 1 ) then scanHeader.scanPointers = ptr_new(scanPointers)
+      if (rank gt 1 ) then scanHeader.pScanPointers = ptr_new(scanPointers)
       scanHeader.name       = name
       scanHeader.timeStamp      = timeStamp
       scanHeader.numPositioners = numPositioners
       scanHeader.numDetectors   = numDetectors
       scanHeader.numTriggers    = numTriggers
       if (numPositioners gt 0) then begin
-         scanHeader.positioners = ptr_new(positioners, /no_copy)
+         scanHeader.pPositioners = ptr_new(positioners, /no_copy)
          for i=0, numPositioners-1 do begin
-            (*scanHeader.positioners)[i].data = ptr_new(positionerData[*,i])
+            (*scanHeader.pPositioners)[i].pData = ptr_new(positionerData[*,i])
          endfor
       endif
       if (numDetectors gt 0) then begin
-         scanHeader.detectors = ptr_new(detectors, /no_copy)
-         dims = (*self.fileHeader.dims)[0:index]
+         scanHeader.pDetectors = ptr_new(detectors, /no_copy)
+         dims = (*self.fileHeader.pDims)[0:index]
          dims = reverse(dims)
          data = fltarr(dims)
          for i=0, numDetectors-1 do begin
             ; Create data arrays
-            (*scanHeader.detectors)[i].data = ptr_new(data)
+            (*scanHeader.pDetectors)[i].pData = ptr_new(data)
          endfor
       endif
-      if (numTriggers gt 0) then scanHeader.triggers = ptr_new(triggers, /no_copy)
-      (*self.scanHeader)[index] = scanHeader
+      if (numTriggers gt 0) then scanHeader.pTriggers = ptr_new(triggers, /no_copy)
+      (*self.fileHeader.pScanHeader)[index] = scanHeader
    endif
-   offset = (*self.dataOffset)[index]
+   offset = (*self.pDataOffset)[index]
    for i=0, numDetectors-1 do begin
-      (*(*(*self.scanHeader)[index].detectors)[i].data)[offset] = detectorData[*,i]
+      (*(*(*self.fileHeader.pScanHeader)[index].pDetectors)[i].pData)[offset] = detectorData[*,i]
    endfor
-   (*self.dataOffset)[index] += npts
+   (*self.pDataOffset)[index] += npts
    if (rank gt 1) then begin
       ; Call ourselves recursively for each scan inside this scan
       for i=0, cpt-1 do begin
-         self->readScanHeader
+         self->readMDAScanHeader
       endfor
    endif
 end
 
 
-pro epics_sscan::readFileHeader
+pro epics_sscan::readMDAFileHeader
    lun = self.lun
    version=0. & number=0L & rank=0S
    readu, lun, version, number, rank
    self.fileHeader.version = version
    self.fileHeader.number  = number
    self.fileHeader.rank    = rank
-   ptr_free, self.scanHeader
-   self.scanHeader = ptr_new(replicate({epics_sscanScanHeader}, rank))
-   self.dataOffset = ptr_new(lonarr(rank))
+   self.fileHeader.pScanHeader = ptr_new(replicate({epics_sscanScanHeader}, rank))
+   self.pDataOffset = ptr_new(lonarr(rank))
    dims = intarr(rank)
    readu, lun, dims
-   ptr_free, self.fileHeader.dims
-   self.fileHeader.dims = ptr_new(dims)
+   self.fileHeader.pDims = ptr_new(dims)
    isRegular=0S & extraPointer=0L
    readu, lun, isRegular, extraPointer
    self.fileHeader.isRegular    = isRegular
-   self.fileHeader.extraPointer = extraPointer
+   self.extraPointer = extraPointer
 end
 
 pro epics_sscan::read_mda, filename
+;+
+; NAME:
+;   epics_sscan::read_mda
+;
+; PURPOSE:
+;   This procedure reads an MDA file into an epics_sscan object.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   scan->read_mda, Filename
+;
+; INPUTS:
+;   Filename:  The name of the MDA file to read.
+;
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> s->display               ; Displays the first detector in scan2
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
+   ; Free any existing pointers
+   self->cleanup_ptrs
    openr, lun, /get, /xdr, filename
    self.lun = lun
-   self->readFileHeader
+   self->readMDAFileHeader
    self.fileHeader.fileName = filename
-   self->readScanHeader
-   self->readExtraPVs
+   self->readMDAScanHeader
+   self->readMDAExtraPVs
    free_lun, lun
+end
+
+
+function epics_sscan::getFileHeader
+;+
+; NAME:
+;   epics_sscan::getFileHeader
+;
+; PURPOSE:
+;   This procedure returns a structure of type {epics_sscanFileHeader}.
+;   Using this structure users can write IDL software to retrieve all of
+;   the data from the epics_sscan object, and hence from an MDA file.
+;
+;   This structure contains pointers to an array of {epics_sscanScanHeader}
+;   structures, which contain the headers and pointers to the data for each
+;   scan (1 to rank).
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   fileHeader = scan->getFileHeader()
+;
+; EXAMPLE:
+;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> h=s->getFileHeader()
+;   IDL> help, /structure, h
+;   ** Structure EPICS_SSCANFILEHEADER, 9 tags, length=40, data length=38:
+;      FILENAME        STRING    '2idd_0087.mda'
+;      VERSION         FLOAT           1.30000
+;      NUMBER          LONG                87
+;      RANK            INT              2
+;      PDIMS           POINTER   <PtrHeapVar80803>
+;      ISREGULAR       INT              1
+;      NUMEXTRA        INT             43
+;      PSCANHEADER     POINTER   <PtrHeapVar80801>
+;      PEXTRAPVS       POINTER   <PtrHeapVar80911>
+;   IDL> print, 'dims=', *h.pDims
+;      dims=      41      41
+;   IDL> help, /structure, (*h.pScanHeader)[0]
+;      ** Structure EPICS_SSCANSCANHEADER, 12 tags, length=56, data length=52:
+;      RANK            INT              2
+;      NPTS            INT             41
+;      CPT             INT             41
+;      PSCANPOINTERS   POINTER   <PtrHeapVar80804>
+;      NAME            STRING    '2idd:A4sens_unit.VAL'
+;      TIMESTAMP       STRING    'Jun 19, 2003 23:59:05.085430051'
+;      NUMPOSITIONERS  INT              1
+;      NUMDETECTORS    INT              8
+;      NUMTRIGGERS     INT              1
+;      PPOSITIONERS    POINTER   <PtrHeapVar80805>
+;      PDETECTORS      POINTER   <PtrHeapVar80807>
+;      PTRIGGERS       POINTER   <PtrHeapVar80816>;
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
+   return, self.fileHeader
+end
+
+
+function epics_sscan::init
+   ; This routine would do any initialization.  None is needed yet.
+   return, 1
+end
+
+pro epics_sscan::cleanup
+   self->cleanup_ptrs
+end
+
+pro epics_sscan::cleanup_ptrs
+   ; This routine cleans up by freeing pointers
+   ptr_free, self.fileHeader.pDims
+   if (ptr_valid(self.fileHeader.pExtraPVs)) then begin
+      for i=0, n_elements(*self.fileHeader.pExtraPVs)-1 do begin
+         ptr_free, (*self.fileHeader.pExtraPVs)[i].pValue
+      endfor
+   endif
+   ptr_free, self.fileHeader.pExtraPVs
+   if (ptr_valid(self.fileHeader.pScanHeader)) then begin
+      for i=0, n_elements(*self.fileHeader.pScanHeader)-1 do begin
+         sh = (*self.fileHeader.pScanHeader)[i]
+         ptr_free, sh.pScanPointers
+         if (ptr_valid(sh.pPositioners)) then begin
+            for j=0, n_elements(*sh.pPositioners)-1 do begin
+               ptr_free, (*sh.pPositioners)[j].pData
+            endfor
+         endif
+         ptr_free, sh.pPositioners
+         if (ptr_valid(sh.pDetectors)) then begin
+            for j=0, n_elements(*sh.pDetectors)-1 do begin
+               ptr_free, (*sh.pDetectors)[j].pData
+            endfor
+         endif
+         ptr_free, sh.pDetectors
+         ptr_free, sh.pTriggers
+      endfor
+   endif
+   ptr_free, self.fileHeader.pScanHeader
+   ptr_free, self.pDataOffset
 end
 
 
 pro epics_sscan__define
+;+
+; NAME:
+;   epics_sscan__define
+;
+; PURPOSE:
+;   This procedure defines the EPICS_SSCAN class.
+;   The EPICS_SSCAN class is designed to do the following:
+;   - Provide an object-oriented interface to standard EPICS scans, enabling
+;     user written software to easily access scan header information and data.
+;   - Provide an easy way to read MDA files written by the saveData function
+;     in synApps.
+;   - Provide an easy way to get scan data into the IDL iTools system.
+;     iTools provide easy to use interfaces for visualizing data, zooming
+;     in, adding annotation, and producing publication quality plots.
+;   - Provide a way to convert binary scan files (e.g. MDA) into ASCII
+;
+;   The initial implementation of EPICS_SSCAN only reads MDA files.
+;   Future enhancements may add a channel-access interface for reading scans
+;   from the IOC directly.  Additional file readers (e.g. Nexus) may be
+;   added.
+;
+; CATEGORY:
+;   EPICS scanning tools.
+;
+; CALLING SEQUENCE:
+;   This routine cannot be called directly.  It is called indirectly as follows:
+;   scan = OBJ_NEW('EPICS_SSCAN')
+;
+; DATA STRUCTURES:
+;   This class defines a number of IDL structure types to store the scan
+;   information.  These structures map closely to the structure of EPICS scans
+;   and MDA data files.  However, they are not limited to MDA files, they could
+;   be used to contain data from any EPICS scan.
+;
+;   The fields described below for these structures are guaranteed to be
+;   present.  More fields may be added in the future as the EPICS_SSCAN
+;   class is enhanced.
+;
+;   The top-level data structure is the {epics_sscanFileHeader}.  There is
+;   only one of these structures in an EPICS_SSCAN object.  It can be returned
+;   with the epics_sscan::getFileHeader method.  With this structure all of
+;   the information in the scan can be retrieved.
+;   This structure is defined as follows:
+;      {epics_sscanFileHeader, $   ; Defines the overall scan data set
+;       fileName:     '', $        ; Contains name of file read with ::read_mda
+;       version:      0., $        ; File version.  1.3 for current files.
+;       number:       0L, $        ; Scan number
+;       rank:         0S, $        ; Rank of outermost scan (1 for 1-D, 2 for 2-D, etc.)
+;       pDims:        ptr_new(), $ ; Pointer to array of scan dimensions
+;       isRegular:    0S, $        ; Don't know what this means yet
+;       numExtra:     0S, $        ; Number of extra PVs
+;       pScanHeader:  ptr_new(), $ ; Pointer to array of {epics_sscanScanHeader} structures
+;                                  ; Array dimensions = "rank"
+;       pExtraPVs:    ptr_new() $  ; Pointer to array of {epics_sscanExtraPV} structures
+;                                  ; Array dimensions = "numExtra"
+;   }
+;
+;   The next structure is the {epics_sscanScanHeader}.  It describes a
+;   single scan. {epics_sscanFileHeader} points to an array of these.
+;   This structure is defined as follows:
+;      {epics_sscanScanHeader, $     ; Defines a single scan.
+;       rank:           0S, $        ; Rank of this scan (1 for 1-D, 2 for 2-D, etc.)
+;       npts:           0S, $        ; Number of points in this scan
+;       cpt:            0S, $        ; Current point.  Less than npts if scan is incomplete.
+;       pScanPointers:  ptr_new(), $ ; Pointers to offsets in file where scans start.
+;       name:           '', $        ; Name of this scan.  This seems wrong in MDA files.
+;       timeStamp:      '', $        ; Time when scan completed
+;       numPositioners: 0S, $        ; Number of positioners
+;       numDetectors:   0S, $        ; Number of detectors
+;       numTriggers:    0S, $        ; Number of detector triggers
+;       pPositioners:   ptr_new(), $ ; Pointer to array of {epics_sscanPositioner}
+;                                    ; Array dimensions = "numPositioners"
+;       pDetectors:     ptr_new(), $ ; Pointer to array of {epics_sscanDetector}
+;                                    ; Array dimensions = "numDetectors"
+;       pTriggers:      ptr_new()  $ ; Pointer to array of {epics_sscanTrigger}
+;                                    ; Array dimensions = "numTriggers"
+;   }
+;
+;   The next structure is the {epics_sscanScanPositioner}.  It describes a
+;   single positioner. {epics_sscanScanHeader} points to an array of these.
+;   This structure is defined as follows:
+;      {epics_sscanPositioner, $     ; Defines a positioner
+;       number:              0S, $   ; Index number
+;       name:                '', $   ; PV name
+;       description:         '', $   ; Description string
+;       stepMode:            '', $   ; Step mode (LINEAR, TABLE, etc.)
+;       units:               '', $   ; Units string
+;       readbackName:        '', $   ; PV name of readback
+;       readbackDescription: '', $   ; Readback description
+;       readbackUnits:       '', $   ; Readback units
+;       pData:               ptr_new() $ ; Pointer to positioner data array.
+;                                    ; Array type=DOUBLE
+;                                    ; Array dimensions = "npts" for this scan
+;   }
+;
+;   The next structure is the {epics_sscanScanDetector}.  It describes a
+;   single detector. {epics_sscanScanHeader} points to an array of these.
+;   This structure is defined as follows:
+;      {epics_sscanDetector, $       ; Defines a detector
+;       number:      0S, $           ; Index number
+;       name:        '', $           ; PV name
+;       description: '', $           ; Description string
+;       units:       '', $           ; Units string
+;       pData:       ptr_new() $     ; Pointer to detector data
+;                                    ; Array type=FLOAT
+;                                    ; Array dimensions=(N, M, ...) where N
+;                                    ; is npts for this scan, M is npts for
+;                                    ; next outer scan, etc.
+;   }
+;
+;   The next structure is the {epics_sscanScanTrigger}.  It describes a
+;   single detector trigger. {epics_sscanScanHeader} points to an array of these.
+;   This structure is defined as follows:
+;   scanTrigger = $
+;      {epics_sscanTrigger, $        ; Defines a scan trigger
+;       number:  0S, $               ; Index number
+;       name:    '', $               ; PV name
+;       command: 0. $                ; Command value written to PV to trigger
+;   }
+;
+;   The final structure is the {epics_sscanScanExtraPV}.  It describes a
+;   single extra PV. {epics_sscanFileHeader} points to an array of these.
+;   This structure is defined as follows:
+;   extraPV = $
+;      {epics_sscanExtraPV, $        ; Defines an "extra" PV stored with scan
+;       name:        '', $           ; PV name
+;       description: '', $           ; Description string
+;       type:        0S, $           ; Data type (see db_access.h for defs)
+;       count:       0S, $           ; Number of values
+;       units:       '', $           ; Units string
+;       pValue:      ptr_new() $     ; Pointer to value
+;   }
+;
+; EXAMPLE:
+;   IDL> s=obj_new('epics_sscan')
+;   IDL> s->read_mda, '2idd_0087.mda'
+;   IDL> h=s->getFileHeader()
+;
+; MODIFICATION HISTORY:
+;   Written by:  Mark Rivers, Nov. 8, 2003
+;-
 
    fileHeader = $
-      {epics_sscanFileHeader, $
-       fileName:     '', $
-       version:      0., $
-       number:       0L, $
-       rank:         0S, $
-       dims:         ptr_new(), $
-       isRegular:    0S, $
-       numExtra:     0S, $
-       extraPointer: 0L $
+      {epics_sscanFileHeader, $   ; Defines the overall scan data set
+       fileName:     '', $        ; Contains name of file read with ::read_mda
+       version:      0., $        ; File version.  1.3 for current files.
+       number:       0L, $        ; Scan number
+       rank:         0S, $        ; Rank of outermost scan (1 for 1-D, 2 for 2-D, etc.)
+       pDims:        ptr_new(), $ ; Pointer to array of scan dimensions
+       isRegular:    0S, $        ; Don't know what this means yet
+       numExtra:     0S, $        ; Number of extra PVs
+       pScanHeader:  ptr_new(), $ ; Pointer to array of {epics_sscanScanHeader} structures
+                                  ; Array dimensions = "rank"
+       pExtraPVs:    ptr_new() $  ; Pointer to array of {epics_sscanExtraPV} structures
+                                  ; Array dimensions = "numExtra"
    }
 
+
    scanHeader = $
-      {epics_sscanScanHeader, $
-       rank:           0S, $
-       npts:           0S, $
-       cpt:            0S, $
-       scanPointers:   ptr_new(), $
-       name:           '', $
-       timeStamp:      '', $
-       numPositioners: 0S, $
-       numDetectors:   0S, $
-       numTriggers:    0S, $
-       positioners:    ptr_new(), $
-       detectors:      ptr_new(), $
-       triggers:       ptr_new()  $
+      {epics_sscanScanHeader, $     ; Defines a single scan.
+       rank:           0S, $        ; Rank of this scan (1 for 1-D, 2 for 2-D, etc.)
+       npts:           0S, $        ; Number of points in this scan
+       cpt:            0S, $        ; Current point.  <npts if scan is incomplete.
+       pScanPointers:  ptr_new(), $ ; Pointers to offsets in file where scans start.
+       name:           '', $        ; Name of this scan.  This seems wrong in MDA files.
+       timeStamp:      '', $        ; Time when scan completed
+       numPositioners: 0S, $        ; Number of positioners
+       numDetectors:   0S, $        ; Number of detectors
+       numTriggers:    0S, $        ; Number of detector triggers
+       pPositioners:   ptr_new(), $ ; Pointer to array of {epics_sscanPositioner}
+                                    ; Array dimensions = "numPositioners"
+       pDetectors:     ptr_new(), $ ; Pointer to array of {epics_sscanDetector}
+                                    ; Array dimensions = "numDetectors"
+       pTriggers:      ptr_new()  $ ; Pointer to array of {epics_sscanTrigger}
+                                    ; Array dimensions = "numTriggers"
    }
 
    scanPositioner = $
-      {epics_sscanPositioner, $
-       number:              0S, $
-       name:                '', $
-       description:         '', $
-       stepMode:            '', $
-       units:               '', $
-       readbackName:        '', $
-       readbackDescription: '', $
-       readbackUnits:       '', $
-       data:                ptr_new() $
+      {epics_sscanPositioner, $     ; Defines a positioner
+       number:              0S, $   ; Index number
+       name:                '', $   ; PV name
+       description:         '', $   ; Description string
+       stepMode:            '', $   ; Step mode (LINEAR, TABLE, etc.)
+       units:               '', $   ; Units string
+       readbackName:        '', $   ; PV name of readback
+       readbackDescription: '', $   ; Readback description
+       readbackUnits:       '', $   ; Readback units
+       pData:               ptr_new() $ ; Pointer to positioner data array.
+                                    ; Array type=DOUBLE
+                                    ; Array dimensions = "npts" for this scan
    }
 
    scanDetector = $
-      {epics_sscanDetector, $
-       number:      0S, $
-       name:        '', $
-       description: '', $
-       units:       '', $
-       data:        ptr_new() $
+      {epics_sscanDetector, $       ; Defines a detector
+       number:      0S, $           ; Index number
+       name:        '', $           ; PV name
+       description: '', $           ; Description string
+       units:       '', $           ; Units string
+       pData:       ptr_new() $     ; Pointer to detector data
+                                    ; Array type=FLOAT
+                                    ; Array dimensions=(N, M, ...) where N
+                                    ; is npts for this scan, M is npts for
+                                    ; next outer scan, etc.
    }
 
    scanTrigger = $
-      {epics_sscanTrigger, $
-       number:  0S, $
-       name:    '', $
-       command: 0. $
+      {epics_sscanTrigger, $        ; Defines a scan trigger
+       number:  0S, $               ; Index number
+       name:    '', $               ; PV name
+       command: 0. $                ; Command value written to PV to trigger
    }
 
    extraPV = $
-      {epics_sscanExtraPV, $
-       name:        '', $
-       description: '', $
-       type:        0S, $
-       count:       0S, $
-       units:       '', $
-       value:      ptr_new() $
+      {epics_sscanExtraPV, $        ; Defines an "extra" PV stored with scan
+       name:        '', $           ; PV name
+       description: '', $           ; Description string
+       type:        0S, $           ; Data type (see dbAccess.h for defs)
+       count:       0S, $           ; Number of values
+       units:       '', $           ; Units string
+       pValue:      ptr_new() $     ; Pointer to value
    }
 
    epics_sscan =  $
       {epics_sscan, $
        lun:            0L, $
-       dataOffset:     ptr_new(), $
-       fileHeader:     fileHeader, $
-       scanHeader:     ptr_new(), $
-       extraPVs:       ptr_new() $
+       pDataOffset:    ptr_new(), $
+       extraPointer:   0L, $
+       fileHeader:     fileHeader $
    }
 end
