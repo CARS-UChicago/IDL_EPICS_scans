@@ -235,12 +235,12 @@ self.subtitle=''
 return
 end
 
-pro      scan_data::dump_ascii, file=file, x=x, y=y, norm=norm, title=title, $
+pro      scan_data::dump_ascii, file=file, norm=norm, title=title, $
                   use_raw=use_raw, use_sum=use_sum, cchar=cchar, label=label
 
 ;
-; writes out two (or three, if normalized) column ascii file from data
-
+; writes out column ascii file from data
+;
 titl  = ''
 cchr  = '#'
 
@@ -249,20 +249,10 @@ if (keyword_set(file)  eq 0)  then begin
     file = self.filename + '.asc'
 endif
 
-if (keyword_set(x)  eq 0)  then begin
-    x1   = self->get_x()
-    labl = self.xpos
-    x1_is_det = 0
-endif else begin
-    x1   = self->get_data(name=x, use_sum=usum)
-    labl = self.subtitle
-    x1_is_det = 1
-endelse
+x1   = (*self.x)
+labl = self.xpos
+if (keyword_set(label)  ne 0)  then labl = label
 
-if (keyword_set(y)  eq 0)  then begin
-   print, 'write_ascii: no y array'
-   return
-endif
 if (keyword_set(title)  ne 0)  then titl = title
 if (keyword_set(cchar)  ne 0)  then cchr = cchar
 
@@ -270,35 +260,46 @@ usum = 1
 if (keyword_set(use_raw) ne 0) then usum = 0
 if (keyword_set(use_sum) ne 0) then usum = 1
 
-x2   = self->get_data(name=y, use_sum=usum)
-labl = labl + ' | ' + self.subtitle
+lx   = (*self.det_names) + ' | '
+ndet = n_elements(*self.det_names)
+
 use_norm  = 0
 if (keyword_set(norm) ne 0) then begin
-    xn   = self->get_data(name=norm, use_sum=usum)
-    x2   = x2/xn
-    labl = labl  + ' | ' + self.subtitle
+    xnorm = self->get_data(name=norm, use_sum=usum)
     use_norm = 1
+    i_norm   = -1
+    for i  = 0, ndet -1 do begin
+        if ((*self.det_names)[i] eq norm) then i_norm = i
+    endfor
 endif
 
-if (keyword_set(label)  ne 0)  then labl = label
-
 openw, lun, file, /get_lun
-if (titl ne '') then  printf, lun, cchr, titl
+if (titl ne '') then  titl = 'summed detectors'
 
+printf, lun, cchr, titl
 printf, lun, cchr, ' data from ' , self.filename
-printf, lun, cchr, '--------------------'
-printf, lun, cchr, ' ', labl
+if ((i_norm ge 0) and (use_norm eq 1)) then begin
+    printf, lun, cchr, ' normalized by detector ' , norm
+endif
 
-nx = n_elements(x1)
-if (use_norm eq 1) then begin
-    for i = 0, nx-1 do begin
-        printf, lun, format='(1x,f10.4,1x,g15.7,1x,g15.7)' , x1[i], x2[i], xn[i]
-    endfor
-endif else begin
-    for i = 0, nx-1 do begin
-        printf, lun, format='(1x,f10.4,1x,g15.7)' , x1[i], x2[i]
-    endfor
-endelse
+printf, lun, cchr, '------------------------'
+printf, lun, cchr, ' ', labl, ' | ', lx
+
+nx   = n_elements(x1)
+
+form_str = '(1x,f10.4'
+for i  = 0, ndet -1 do form_str = form_str + ',1x,g15.7'
+form_str = form_str + ')'
+
+for i = 0, nx-1 do begin
+    dets = reform((*self.sums)[i,*])
+    if ((i_norm ge 0) and (use_norm eq 1)) then begin
+        for j = 0, ndet-1 do begin
+            if (j ne i_norm) then dets[j] = dets[j]/dets[i_norm]
+        endfor
+    endif
+    printf, lun, format=form_str, x1[i], dets
+endfor
 
 print, 'wrote ', file
 close, lun
@@ -799,6 +800,7 @@ endif
 ;
 
 filetype  = self->filetype(file)
+; print, ' file type = ' , filetype
 case filetype of
     1: begin
         retval = self->read_ascii_data_file(file)
@@ -870,6 +872,8 @@ nrow       = -1
 ngroups    = -1
 npos       = -1
 ndet       = -1
+ntitles    = -1
+nt         =  0
 first_line = 1
 ncols      = 1
 nline      = 1
@@ -1116,6 +1120,8 @@ self.det_names = ptr_new(dname)
 self.det_list  = ptr_new(detectors)
 self.det_orig  = ptr_new(detectors)
 
+if (ndet le 0) then ndet = 1
+
 ut = strarr(ndet)
 for i = 0, n_elements(ut)-1 do ut[i] = det_desc[i]
 self.detfull_desc = ptr_new(ut)
@@ -1126,16 +1132,20 @@ self.detfull_pv   = ptr_new(ut)
 ; print, 'size of detfull_pv = ', n_elements(ut), n_elements(*self.detfull_pv)
 
 if (ntitles le 0) then begin
-    ntitles = 2
+    ntitles = 1
     user_titles[0] = '<- No User Titles ->'
-    user_titles[1] = '<- No User Titles ->'
 endif
 ut = strarr(ntitles)
 for i = 0, n_elements(ut)-1 do ut[i] = user_titles[i]
 self.user_titles  = ptr_new(ut)
 
-ut = strarr(nt)
-for i = 0, n_elements(ut)-1 do ut[i] = pv_list[i]
+if (nt gt 0) then begin
+    ut = strarr(nt)
+    for i = 0, n_elements(ut)-1 do ut[i] = pv_list[i]
+endif else begin
+    ut = strarr(1)
+    ut[0] = '<- No PV LIST ->'
+endelse
 self.pv_list      = ptr_new(ut)
 
 ; print, ' read done'
@@ -1254,8 +1264,9 @@ self.sums = ptr_new(x)
 ; ncdf_varput, ncid, 'detectors',   (*self.raw)
 
 ncdf_close, ncid
+retval = 0
 
-return, 0
+return, retval
 end
 
 pro      scan_data::save_netcdf, file=file
@@ -1308,7 +1319,6 @@ id   = ncdf_vardef(ncid, 'sums map',    [ndet],      /short)
 if (self.dimension ge 2) then begin
     id = ncdf_vardef(ncid, 'detectors',   [nx,ny,ndet], /float)
     id = ncdf_vardef(ncid, 'det sums',    [nx,ny,nsum], /float)
-    print,  ' AAAA '
 endif else begin
     id = ncdf_vardef(ncid, 'detectors',   [nx,ndet],   /float)
     id = ncdf_vardef(ncid, 'det sums',    [nx,nsum],   /float)
