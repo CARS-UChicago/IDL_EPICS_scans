@@ -10,6 +10,75 @@ x = caput(pv,val)
 return, x
 end
 
+function epics_scan::beam_ok
+;
+;
+r = 1
+v = caget(self.beam_ok_pv, lock)
+v = caget(self.shutter_pv, open)
+if ((lock eq 0) or (open eq 0)) then r = 0
+
+return, r
+end
+
+
+function epics_scan::get_current_dimension
+v = self.prefix + 'ScanDim.VAL'
+d = 0
+x = caget(v,d)
+return, d
+end
+
+pro epics_scan::pause_scan
+v = self.prefix + 'scanPause.VAL'
+x = ca_put(v,1)
+self.cur_status   = 'Paused'
+return
+end
+
+pro epics_scan::unpause_scan
+v = self.prefix + 'scanPause.VAL'
+x = ca_put(v,0)
+self.cur_status   = ''
+return
+end
+
+
+pro epics_scan::abort
+;
+v = self.prefix + 'AbortScans.PROC'
+x = ca_put(v,1)
+wait, 0.5
+x = ca_put(v,0)
+self.cur_status   = 'Aborted'
+return
+end
+
+function epics_scan::is_scanning, dim=dim
+;
+if (keyword_set(dim) eq 0) then dim = 1
+dim = dim-1 < 2 > 0
+v = caget(self.scan[dim].scanpv + '.EXSC',ret)
+return, ret
+end
+
+function epics_scan::cpt, dim=dim
+;
+if (keyword_set(dim) eq 0) then dim = 1
+dim = dim-1 < 2 > 0
+ret = 0
+v = caget(self.scan[dim].scanpv + '.CPT',ret)
+return, ret
+end
+
+function epics_scan::npts, dim=dim
+;
+if (keyword_set(dim) eq 0) then dim = 1
+dim = dim-1 < 2 > 0
+ret = 0
+v   = caget(self.scan[dim].scanpv + '.NPTS',ret)
+return, ret
+end
 
 function epics_scan::write_pv_list, lun=lun
 ;
@@ -75,6 +144,21 @@ self.lun = -3
 return, 0
 end
 
+
+function epics_scan::write_to_scanfile, s
+;
+; write a single string to the current (already opened) scan file
+catch, error
+ret = -1
+if (error ne 0) then return, ret
+u   = strtrim(s,2)
+if ((self.lun gt 0) and (strlen(u) ge 1)) then begin
+    printf, self.lun, strtrim(s,2)
+    ret = strlen(u)
+endif 
+return, ret
+end
+
 function epics_scan::open_scanfile, append=append
 
 if (self.datafile eq ' ') then  self.datafile = 'scan_001.dat'
@@ -93,7 +177,7 @@ function epics_scan::write_scan_data, short_labels=short_labels
 ; out to self.lun (presumably, the already open scanfile)
 ;
 ret = 0
-SPV = self.scan[0].scanPV
+SPV = self.scan[0].scanpv
 write_labels  = 1
 if (n_elements(short_labels) ne  0)   then  write_labels = short_labels
 ; print, ' write_scan_data,  labels = ' , write_labels
@@ -102,7 +186,7 @@ lun = self.lun
 mpos = n_elements(dat.p_used)
 mdet = n_elements(dat.d_used)
 npts = dat.npts
-
+x    = self->lookup_positioners()
 
 printf, lun, '; scan ended at time: ' , systime(0)
 if (write_labels eq 1) then begin
@@ -167,18 +251,24 @@ function epics_scan::start_scan1d, no_file=no_file, no_pv_list=no_pv_list,$
                    
 ;  begin scan1d (this __only__ does a 1d scan!!)
 stime  = systime(0)
-;
-;
+
 ; check shutter status: if closed, then do NOT scan
 ; and return -1
 ; print, '  In start_scan1d'
-result = caget(self.shutter_pv, shutter)
-;
-; if ((shutter ne 1) or (result ne 0)) then return, -1
+
+r = caget(self.shutter_pv, shutter)
+; if ((shutter ne 1) or (r ne 0)) then return, -1
 
 ;
-; print, ' starting ', self.scan[0].scanPV 
-result = ca_put(self.scan[0].scanPV + '.EXSC', 1)
+; print, ' starting ', self.scan[0].scanpv 
+
+; always explicitly set auto-wait for client
+user_wait = 0
+if (self.save_med) then user_wait = 1 
+result = ca_put(self.scan[0].scanpv + '.AWCT',user_wait)
+
+; start scan
+result = ca_put(self.scan[0].scanpv + '.EXSC', 1)
 
 if (self.lun lt -2) then begin
     x  = self->open_scanfile(/append)
@@ -222,7 +312,7 @@ end
 
 function epics_scan::check_scan_limits
 ;  check scan limits
-y   = self.scan[self.current_scan-1].scanPV 
+y   = self.scan[self.current_scan-1].scanpv 
 print, 'checking scan limits for scan ',y
 x1  = ca_put(y + '.CMND', 1)
 wait, 0.25
@@ -235,7 +325,7 @@ endif
 return, ret
 end
 
-function epics_scan::get_npts
+function epics_scan::get_npts_total
 ;  get total number of points in scan
 n = 1
 for is = 0, self.dimension-1 do  n = n * self.scan[is].npts_total
@@ -300,6 +390,42 @@ self.scan[iscan].time_est = time_est
 
 return, n
 end
+
+
+function epics_scan::write_med_file, pt=pt, pt2=pt2, file=file
+; 
+retval = -1
+if (obj_valid(self.med_obj)) then begin
+    if (keyword_set(file) eq 0) then begin
+        if (keyword_set(pt)  ne 0) then  pt = 0
+        if (keyword_set(pt2) ne 0) then  pt2 = 0
+
+        file = self.datafile  + '__'+ string(pt+1,format='(i3.3)')
+        x    = caget(self.prefix + 'ScanDim.VAL', curdim)
+        if (curdim ge 2) then file = file + '_'+ f2a(pt2+1)
+        file = file + '.xrf'
+    endif
+    am_waiting  = self->check_scan_wait()
+    print, ' saving XRF spectra to ', file
+    self.med_obj->write_file, file
+    retval  = 0
+    if (am_waiting) then retval = self->clear_scan_wait()
+endif 
+return, retval
+end
+
+
+function epics_scan::check_scan_wait
+wait = 0
+x = caget(self.scan[0].scanpv + '.WTNG', wait)
+return, wait
+end
+
+function epics_scan::clear_scan_wait
+x = caget(self.scan[0].scanpv + '.WAIT', 0)
+return, x
+end
+
 function epics_scan::read_data_from_crate
 ;
 ;  upload 1d scan results from crate
@@ -311,7 +437,7 @@ function epics_scan::read_data_from_crate
 ;    pa      (npts,npos)
 ;    da      (npts,ndet)
 ;  pauses scan while reading!
-SPV   = self.scan[0].scanPV
+SPV   = self.scan[0].scanpv
 ; Pause Scan for read
 x     = caget(self.prefix + 'scanPause.VAL', pause_val)
 x     = ca_put(self.prefix + 'scanPause.VAL', 1)
@@ -359,14 +485,15 @@ function epics_scan::load_to_crate
 ;
 ; load a motor scan record to the crate
 ; 
+
 ; print, 'LOAD: current_scan ', self.current_scan,  '  dim: ', self.dimension
 
 time_est = 0.000
 
 for is = 0, self.dimension-1 do begin
-    ;print, ' >> scan  ', is, ' << '
+    ; print, 'LOAD >> scan  ', is, ' << '
     imot   = self.scan[is].drives[0]
-    SPV    = self.scan[is].scanPV
+    SPV    = self.scan[is].scanpv
     type   = self.scan[is].type
     if (strupcase(self.scan[is].type) eq 'EXAFS') then imot = self.motors.e_drive
 
@@ -447,7 +574,7 @@ for is = 0, self.dimension-1 do begin
             endif
         endfor
     endif else begin
-        x = ca_put( SPV + '.T1PV',  self.scan[is-1].scanPV + '.EXSC')
+        x = ca_put( SPV + '.T1PV',  self.scan[is-1].scanpv + '.EXSC')
     endelse
 endfor
 
@@ -457,8 +584,8 @@ if (result ne 0) then begin
     message = ' Problem with Scan Definition:  Check Limits '
     print , ' SPV = ', SPV
     print , ' is  = ', is
-    print , ' scan 2 = ', self.scan[1].scanPV
-    print , ' scan 1 = ', self.scan[0].scanPV
+    print , ' scan 2 = ', self.scan[1].scanpv
+    print , ' scan 1 = ', self.scan[0].scanpv
 endif
 
 print, format='(1x,a,$)', message
@@ -490,16 +617,18 @@ function epics_scan::save_paramfile, use_dialog=use_dialog
   printf, lun,  ';Scan Parameters% v1.1'
   printf, lun,  ' prefix%       ',  self.prefix
   printf, lun,  ' shutter_pv%   ',  self.shutter_pv
-  printf, lun,  ' shutter_open%   ',  self.shutter_open
-  printf, lun,  ' shutter_clos%   ',  self.shutter_clos
+  printf, lun,  ' shutter_open% ',  self.shutter_open
+  printf, lun,  ' shutter_clos% ',  self.shutter_clos
+  printf, lun,  ' beam_ok_pv%   ',  self.beam_ok_pv
   printf, lun,  ' datafile%     ',  self.datafile
-  printf, lun,  ' monitorfile%     ',  self.monitorfile
+  printf, lun,  ' monitorfile%  ',  self.monitorfile
   printf, lun,  ' dimension%    ',  self.dimension
+  printf, lun,  ' save_med%     ',  self.save_med  
   printf, lun,  ' current_scan% ',  self.current_scan 
   for iscan = 0, 2 do begin
       scanname = 'scan  ' + string(iscan+1, format='(i1.1)')
       printf, lun, format='(";",a," %")', scanname
-      printf, lun, format='("  scanPV%   ",a)',  self.scan[iscan].scanPV
+      printf, lun, format='("  scanpv%   ",a)',  self.scan[iscan].scanpv
       printf, lun, '  type%     ',  self.scan[iscan].type
       printf, lun, '  drives%   ',  string(self.scan[iscan].drives) + ' '
       printf, lun, '  n_regions%',  self.scan[iscan].n_regions
@@ -619,26 +748,28 @@ function epics_scan::read_paramfile, use_dialog=use_dialog, file=file
                ipos  = 0
            endif
        endif else begin
-           key = strmid(str,0, iperc)
+           key = strlowcase(strmid(str,0, iperc))
            val = strtrim(strmid(str,iperc+1, strlen(str)), 2)
            case mode of 
                'Scan Parameters': begin
                   case key of 
                       'prefix':         self.prefix      = val
                       'datafile':       self.datafile    = val
+                      'beam_ok_pv':     self.beam_ok_pv  = val
                       'shutter_pv':     self.shutter_pv  = val
                       'shutter_clos':   self.shutter_clos= val
                       'shutter_open':   self.shutter_open= val
                       'monitorfile':    self.monitorfile = val
                       'current_scan':   self.current_scan= val
                       'dimension':      self.dimension   = val
+                      'save_med':       self.save_med    = val
                       'total_time':     self.total_time  = val
                       else: print, ' unknown key for Main: ', key
                   endcase
               end
               'scan': begin
                   case key of
-                      'scanPV':    self.scan[iscan].scanPV    = val
+                      'scanpv':    self.scan[iscan].scanpv    = val
                       'type':      self.scan[iscan].type      = val
                       'n_regions': self.scan[iscan].n_regions = val
                       'is_rel':    self.scan[iscan].is_rel    = val
@@ -742,13 +873,13 @@ end
 
 function epics_scan::lookup_detectors
 ;
-;  get detector settings from currently defined scan
+;  get detector valuse from the currently loaded scan ...
 ;  used for initializing detector structure
-;
 
-scan_pv = self.scan[0].scanPV
+scan_pv = self.scan[0].scanpv
 ndet    = 0
 ; print, '  IN  look up detectors: ',  n_elements(self.detectors.countPV) 
+str  = ''
 for i = 0, n_elements(self.detectors.countPV)-1 do begin
     ; det  =  string(i+1,format='(i1.1)') 
     ; if (i ge 9) then  det = string(byte(i + 56))
@@ -756,89 +887,39 @@ for i = 0, n_elements(self.detectors.countPV)-1 do begin
     det  =  string(i+1,format='(i2.2)') 
     x = caget(scan_pv + '.D' + det + 'PV', str)
     if ((x eq 0) and (str ne '')) then begin
+        ds = strtrim(str,2)
+        if (ds ne str) then x = ca_put(scan_pv + '.D' + det + 'PV', ds)
+        str = ds
+    endif else  begin
+        str = ''
+    endelse
+    ;
+    if (str ne '') then begin
+        self.detectors.countPV[ndet]  = str        
+        desc   = guess_det_desc(pv=str,net=net)
+        self.detectors.desc[ndet] = desc
+        igroup = -1
+        for ig = 0, n_elements(self.detgroups.prefix)-1 do begin
+            pr = self.detgroups.prefix[ig]
+            if ((self.detgroups.use_det[ig] eq 1) and $
+                (strmid(str,0,strlen(pr)) eq pr)) then igroup = ig
+        endfor
+        self.detectors.use_net[ndet] = net
+        self.detectors.desc[ndet]    = desc
+        self.detectors.group[ndet]   = igroup
+        ; print, 'Fill Det: ', i, ' ' , str, ' | ', desc, igroup, net
         ndet  = ndet + 1
-        ; print, 'str =', str
-        kk = self->fill_in_detector_settings(i,str)
-    endif
+    endif 
 endfor
 self.detectors.ndetectors = ndet
 return, ndet
-end
-
-function epics_scan::fill_in_detector_settings, ndet, str
-;
-str = strtrim(str,2)
-if (str eq '') then  return, -1
-i = ndet
-self.detectors.countPV[i]  = str        
-; decide which detector group this belongs to
-igroup = 0
-dgrp   = self.detgroups
-ending = ''
-for ig = 0, n_elements(dgrp.prefix)-1 do begin
-    if (dgrp.use_det[ig] eq 1) then  begin
-        l = strlen(dgrp.prefix[ig])
-        if (strmid(str,0,l) eq dgrp.prefix[ig]) then begin
-            igroup = ig
-            ending = strmid(str,l,strlen(str)) 
-        endif
-    endif
-endfor
-
-is_mca = dgrp.is_mca[igroup]
-gr     = strtrim(dgrp.prefix[igroup],2)
-lgr    = strlen(gr)
-en     = strtrim(ending,2)
-len    = strlen(en)
-dv     = gr + en
-elem    = 'None'
-use_net = 0
-if  (gr ne '') and (en eq '')  then begin 
-    elem = 'OK'
-    if (strupcase(strmid(gr,lgr-4,4)) eq '.VAL') then begin
-        dv    = strmid(gr,0,lgr-4) + '.DESC'
-    endif
-endif else if ( (gr ne '') and (en ne ''))  then begin
-    if (is_mca eq 1) then begin
-        elem        = 'OK'
-        dv = gr + en + 'NM'
-        if (strmid(en,len,1) eq 'N') then begin
-            use_net = 1
-            dv      = gr + en + 'M'
-        endif
-    endif else begin        
-        if (strmid(en,0,2) eq '.S') then begin
-            elem  = strmid(en,2,len)
-            dv  = gr + '.NM' + elem
-        endif else if (strmid(en,0,5) eq '_calc') then begin
-            use_net = 1
-            en  = strmid(en,5,len)
-            len = strlen(en)
-            elem  = strmid(en,0,len) 
-            if (strupcase(strmid(en,len-4,4)) eq '.VAL') then begin
-                elem  = strmid(en,0,len-4) 
-            endif
-        endif
-        if (elem ne 'None') then dv  = gr + '.NM' + elem
-    endelse
-endif
-
-desc  = dv
-if (elem ne 'None') then stat  = caget(dv, desc)
-
-self.detectors.group[i]    = igroup
-self.detectors.use_net[i]  = use_net
-self.detectors.desc[i]     = desc
-; print, ' Fill in Detector: ', i, ' ' , str, igroup, use_net, ' => ', desc
-
-return,0
 end
 
 function epics_scan::lookup_positioners
 ;
 ;  get positioner PVs
 ;
-scan_pv = self.scan[0].scanPV
+scan_pv = self.scan[0].scanpv
 for i = 0, n_elements(self.scan[0].drives)-1 do begin
     pos  =  string(i+1,format='(i1.1)') 
     x = caget(scan_pv + '.P' + pos + 'PV', str)
@@ -976,7 +1057,7 @@ is = 0
 if (keyword_set(iscan) ne 0) then is = iscan
 if (keyword_set(par) ne 0) then begin
     case par of
-        'scanPV':       retval = self.scan[is].scanPV
+        'scanpv':       retval = self.scan[is].scanpv
         'type':         retval = self.scan[is].type
         'max_points':   retval = self.scan[is].max_points
         'n_regions':    retval = self.scan[is].n_regions
@@ -995,6 +1076,38 @@ endif
 return, retval
 end
 
+
+function epics_scan::get_detector_list, pv=pv,desc=desc
+;
+; return string array of non-null detectors in use
+; returns either list of pvs or list of descriptions
+;
+use_desc  = 1
+if (keyword_set(pv)   ne 0) then use_desc = 0
+if (keyword_set(decs) ne 0) then use_desc = 1
+
+out= ['']
+nd = n_elements(self.detectors.desc)
+if (nd le 1) then return, out
+
+l  = strarr(nd)
+j  = -1
+for i = 0, nd - 1 do begin
+    if (self.detectors.desc[i] ne '') then  begin
+        j    = j + 1
+        l[j] = self.detectors.desc[i]
+    endif
+endfor
+
+if (j ge 0) then begin
+    out = strarr(j+1)
+    for i = 0, j do  out[i] = l[i]
+endif
+return, out
+
+end
+
+
 function epics_scan::get_param, par
 ;
 ; return a copy of an object member structure
@@ -1009,18 +1122,21 @@ if (keyword_set(par) ne 0) then begin
         'paramfile':    val = self.paramfile
         'detgroups':    val = self.detgroups
         'datafile':     val = self.datafile
+        'beam_ok_pv':   val = self.beam_ok_pv
         'shutter_pv':   val = self.shutter_pv
         'shutter_clos': val = self.shutter_clos
         'shutter_open': val = self.shutter_open
         'monitorfile':  val = self.monitorfile
         'detectors':    val = self.detectors
+        'ndetectors':   val = self.detectors.ndetectors
         'current_scan': val = self.current_scan
         'motors':       val = self.motors
         'scan1':        val = self.scan[0]
         'scan2':        val = self.scan[1]
         'scan3':        val = self.scan[2]
-        'npts_total':   val = self->get_npts()
+        'npts_total':   val = self->get_npts_total()
         'med_obj':      val = self.med_obj
+        'save_med':     val = self.save_med
     endcase
 endif
 
@@ -1039,6 +1155,7 @@ if (keyword_set(par) ne 0) then begin
         'paramfile':    self.paramfile    = val
         'datafile':     self.datafile     = val
         'monitorfile':  self.monitorfile  = val
+        'beam_ok_pv':   self.beam_ok_pv   = val
         'shutter_pv':   self.shutter_pv   = val
         'shutter_clos': self.shutter_clos = val
         'shutter_open': self.shutter_open = val
@@ -1048,16 +1165,13 @@ if (keyword_set(par) ne 0) then begin
         'scan1':        self.scan[0]      = val
         'scan2':        self.scan[1]      = val
         'scan3':        self.scan[2]      = val
+        'save_med':     self.save_med     = val
         'detectors':    begin
             self.detectors   = val
-            SPV  = self.scan[0].scanPV
+            SPV  = self.scan[0].scanpv
             for i = 0, n_elements(self.detectors.countPV) - 1 do begin
-                ; det  =  string(i+1,format='(i1.1)') 
-                ; if (i ge 9) then  det = string(byte(i + 56))
-                ; Matt 26-Sept-2000 switch to 70 detector scan record
                 det  =  string(i+1,format='(i2.2)') 
                 x = ca_put( SPV + '.D' + det + 'PV', self.detectors.countPV[i])
-                ; print, ' det ',  det , ' --> ',  self.detectors.countPV[i]
             endfor
         end
         else:           retval = 0
@@ -1078,10 +1192,13 @@ self.prefix            =  prefix
 self.paramfile         = 'default.scn'
 self.datafile          = 'scan_001.dat'
 self.monitorfile       = 'scan_pvs.dat'
+self.beam_ok_pv        = '13IDA:mono_pid1Locked'
 self.shutter_pv        = '13IDA:eps_mbbi4'
 self.shutter_clos      = '13IDA:eps_bo4'
 self.shutter_open      = '13IDA:eps_bo3'
 self.user_comments     = ''
+self.cur_status        = ''
+self.save_med          = 0
 self.current_scan      = 1
 self.dimension         = 1
 self.max_scan_points   = MAX_SCAN_POINTS
@@ -1102,9 +1219,9 @@ self.detgroups.triggerpv[1]     = 'EraseStart'
 self.detgroups.counterpv[1]     = 'PresetReal'
 
 
-self.scan[0].scanPV    = self.prefix + 'scan1'
-self.scan[1].scanPV    = self.prefix + 'scan2'
-self.scan[2].scanPV    = self.prefix + 'scan3'
+self.scan[0].scanpv    = self.prefix + 'scan1'
+self.scan[1].scanpv    = self.prefix + 'scan2'
+self.scan[2].scanpv    = self.prefix + 'scan3'
 for i = 0, 2 do begin
     self.scan[i].type      = 'motor'
     self.scan[i].is_rel    = 1
@@ -1126,15 +1243,28 @@ if (keyword_set(scan_file) ne 0) then begin
         self.paramfile = ' '
         u = self->read_paramfile(use_dialog=1)
     endif
-    print, format='(1x,a,$)', ' Getting current motor settings ... '
-    u = self->lookup_motors()
-    print, format='(1x,a,$)', ' detector settings ... '
-    u = self->lookup_detectors()
-    print, ' '
-    for i = 0,  n_elements(self.motors.name)-1 do begin
-        if (strupcase(strtrim(self.motors.name[i],2)) eq 'ENERGY') then   self.motors.e_drive = i
-    endfor
 endif
+print, format='(1x,a,$)', ' Getting current motor settings ... '
+u = self->lookup_motors()
+print, format='(1x,a,$)', ' detector settings ... '
+u = self->lookup_detectors()
+print, ' '
+for i = 0,  n_elements(self.motors.name)-1 do begin
+    if (strupcase(strtrim(self.motors.name[i],2)) eq 'ENERGY') then   self.motors.e_drive = i
+endfor
+
+x  = self->get_current_dimension()
+m  = n_elements(self.detgroups.name)
+
+for i = 0, m-1 do begin
+    s = strlowcase(self.detgroups.name[i])
+    if (strpos(s,'med') ge 0) then begin
+        s = self.detgroups.prefix[i]
+        print, '  connecting to MED detector ... ' , s
+        self.med_obj   = obj_new('EPICS_MED', s) 
+    endif
+endfor
+
 
 return, 1
 end
@@ -1230,7 +1360,7 @@ motors    = { motors, name: strarr(MAX_MOT), e_drive:0L,$
               llim:   fltarr(MAX_MOT),  hlim:  fltarr(MAX_MOT) }
 
 
-scan1     = { scan, scanPV: 'scan1',    type : 'Motor', $
+scan1     = { scan, scanpv: 'scan1',    type : 'Motor', $
               drives:    intarr(MAX_POS), $
               pos_names: strarr(MAX_POS), $
               posPVs:    strarr(MAX_POS), $
@@ -1246,8 +1376,8 @@ scan1     = { scan, scanPV: 'scan1',    type : 'Motor', $
 
 scan2     = scan1
 scan3     = scan1
-scan2.scanPV = 'scan2'
-scan3.scanPV = 'scan3'
+scan2.scanpv = 'scan2'
+scan3.scanpv = 'scan3'
 
 epics_scan= { epics_scan, $
               prefix:       ' ', $
@@ -1255,14 +1385,17 @@ epics_scan= { epics_scan, $
               monitorfile:  ' ', $ ; file of PVs to write down at start of scan
               datafile:     ' ', $
               user_comments:' ', $
-              med_obj:0L, $
+              save_med:0, $
+              med_obj: obj_new(), $
               lun:         -3, $
               dimension:    1, $
               total_time:   1.00000000, $
               current_scan: 1, $
+              beam_ok_pv:   ' ',$
               shutter_pv:   ' ',$
               shutter_clos:   ' ',$
               shutter_open:   ' ',$
+              cur_status : '', $
               max_scan_points: MAX_SCAN_POINTS, $
               detgroups:    detgroups, $
               detectors:    detectors, $
