@@ -57,7 +57,8 @@ endif else begin
             tmp = strmid(det,iel+4,strlen(det))
             ids = strpos(tmp,'.')
             if ((desc ne dpv) and (ids ge 1)) then $
-              desc = desc + ' [' + strmid(tmp,0,ids) + ']'
+              desc = strmid(tmp,0,ids) + ': ' + desc
+;;;               desc = desc + ' [' + strmid(tmp,0,ids) + ']'
         endif
     endif else begin
         ival = strpos(det,'.VAL')
