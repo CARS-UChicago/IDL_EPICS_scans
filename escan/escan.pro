@@ -661,22 +661,22 @@ info   = {es:es, form:form, mscan:mscan, escan:escan}
 ; menus
 
 main   = Widget_Base(title = 'Epics Scan Setup', /col, app_mbar = mbar)
-; Widget_Control, default_font='Fixedsys' 
+;; Widget_Control, default_font='Fixedsys' 
 menu   = Widget_Button(mbar, value= 'File')
 x      = Widget_Button(menu, value= 'Read Scan File ...',  uval= 'read_params')
 x      = Widget_Button(menu, value= 'Save Scan File ...',  uval= 'save_params')
 x      = Widget_Button(menu, value= 'Save As ...',         uval= 'saveas_params')
 x      = Widget_Button(menu, value= 'Exit',                uval= 'exit', /sep)
 
-menu   = Widget_Button(mbar, value= 'Setup')
-x      = Widget_Button(menu, value= 'General Setup ...',    uval= 'setup')
+menu   = Widget_Button(mbar, value= 'Detectors')
+x      = Widget_Button(menu, value= 'Setup ...',            uval= 'setup')
 x      = Widget_Button(menu, value= 'Select Detectors ...', uval= 'define_dets') 
-x      = Widget_Button(menu, value= 'Define Motors ...',    uval= 'define_mots') 
 x      = Widget_Button(menu, value= 'Collect Offsets ...',  uval= 'collect_offs') 
+; x      = Widget_Button(menu, value= 'Define Motors ...',    uval= 'define_mots') 
 
-menu   = Widget_Button(mbar, value= 'Help', /menu, /help)
-x      = Widget_Button(menu, value= 'Help on EPICS SCAN',  uval= 'escan_help')
-x      = Widget_Button(menu, value= 'Help on IDL',         uval= 'IDLhelp')
+; menu   = Widget_Button(mbar, value= 'Help', /menu, /help)
+; x      = Widget_Button(menu, value= 'Help on EPICS SCAN',  uval= 'escan_help')
+; x      = Widget_Button(menu, value= 'Help on IDL',         uval= 'IDLhelp')
 ;-----------------------
 
 mframe = Widget_Base(main,   /col)
@@ -744,13 +744,14 @@ info.mscan.hlim = CW_Field(fr02,  title = ' : High ', $
 
 fr03   = Widget_Base(info.form.nb[0], /col,/frame)
 fr04   = Widget_Base(fr03, /row)
-X = Widget_Label(fr04, XSIZE=  85,  VALUE = 'Region ' )
-X = Widget_Label(fr04, XSIZE= 100,  VALUE = ' Start  ' )
-X = Widget_Label(fr04, XSIZE= 100,  VALUE = ' Stop   ' )
-X = Widget_Label(fr04, XSIZE= 100,  VALUE = ' Step   ' )
-X = Widget_Label(fr04, XSIZE= 100,  VALUE = ' Npts   ' )
-X = Widget_Label(fr04, XSIZE= 100,  VALUE = ' Time (s)')
-X = Widget_Label(fr04, XSIZE= 100,  VALUE = ' Units  ' )
+ts  = 85
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Region  ' )
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Start   ' )
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Stop    ' )
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Step    ' )
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Npts    ' )
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Time (s)')
+X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Units   ' )
 
 
 reg_title = ['1', '2', '3', '4']
@@ -813,13 +814,15 @@ fr12  = Widget_Base(info.form.nb[1], /row )
 fr12  = Widget_Base(info.form.nb[1], /row)
 fr13  = Widget_Base(info.form.nb[1], /col,/frame)
 fr14  = Widget_Base(fr13, /row)
-X = Widget_Label(fr14, XSIZE=  85,  VALUE = 'Region ' )
-X = Widget_Label(fr14, XSIZE= 100,  VALUE = ' Start  ' )
-X = Widget_Label(fr14, XSIZE= 100,  VALUE = ' Stop   ' )
-X = Widget_Label(fr14, XSIZE= 100,  VALUE = ' Step   ' )
-X = Widget_Label(fr14, XSIZE= 100,  VALUE = ' Npts   ' )
-X = Widget_Label(fr14, XSIZE= 100,  VALUE = ' Time (s)')
-X = Widget_Label(fr14, XSIZE= 100,  VALUE = ' Units  ' )
+
+ts = 85
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Region  ' )
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Start   ' )
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Stop    ' )
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Step    ' )
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Npts    ' )
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Time (s)')
+X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Units   ' )
 
 etitle   = ['Pre-Edge', 'XANES', 'EXAFS', 'EXTRA']
 k_spaces = ['eV', STRING(197B)+'^(-1)']
@@ -876,9 +879,7 @@ info.form.time_est = Widget_Label(base2,  xsize=190,value = '            ')
 
 sv = obj_new('scanviewer',escan=es)
 
-for i = 0, 2 do begin
-    sc          = update_scan_settings(info.escan, sc, i)
-endfor
+for i = 0, 2 do  sc  = update_scan_settings(info.escan, sc, i)
 
 
 ; render widgets, load info structure into main
