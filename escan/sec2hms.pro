@@ -33,8 +33,9 @@ dd  = abs(round((rem - ss)*100))
 ; print, hh, mm, ss, dd
 ff  = '(i2.2)'
 del = ':'
+dot = '.'
 sgn = ' '
-s   =  strtrim(string(hh+extra,del,mm,del,ss,del,dd, $
+s   =  strtrim(string(hh+extra,del,mm,del,ss,dot,dd, $
                       format='(i9,a,i2.2,a,i2.2,a,i2.2)'),2)
 
 if (xsgn lt 0) then s = '-' + s
