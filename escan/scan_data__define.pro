@@ -1,4 +1,4 @@
-;
+ ;
 ; Scan Data Class: read and manipulate epics scan data and maps
 ; 
 ; function scan_data::match_detector_name
@@ -235,12 +235,10 @@ self.subtitle=''
 return
 end
 
-;;
-
-
 pro      scan_data::dump_ascii, file=file, x=x, y=y, norm=norm, title=title, $
                   use_raw=use_raw, use_sum=use_sum, cchar=cchar, label=label
 
+;
 ; writes out two (or three, if normalized) column ascii file from data
 
 titl  = ''
@@ -536,7 +534,7 @@ endif else if (n_elements(list)   le 0)  then begin
 endif
 
 n     = n_elements((*self.det_list)) 
-print, 'unindex = ', uindex
+; print, 'unindex = ', uindex
 ;
 ; unset all detector elements for this sum
 for j = 0, n - 1 do begin
@@ -717,6 +715,49 @@ self.nplot = 0
 return
 end
 
+function scan_data::filetype, file
+;
+; checks file type of file, returning:
+;   2    NETCDF, Epics Scan
+;   1    ASCII,  Epics Scan
+;  -1    ASCII,  Not Epics Scan
+;  -2    NETCDF, Not Epics Scan
+;  -3    Unknown
+; 
+on_ioerror, not_cdf
+u = ncdf_open(file,/nowrite)
+retval = -2
+
+on_ioerror, not_epics_cdf
+
+at = ncdf_attinq(u, 'title', /global)
+if (at.datatype ne 'UNKNOWN') then begin
+    ncdf_attget, u, 'title', /global, ff
+    if (strpos(string(ff), 'Epics Scan: netcdf') ge 0) then retval = 2
+endif
+
+not_epics_cdf:
+ncdf_close, u
+
+return, retval
+
+not_cdf:
+on_ioerror, not_ascii
+
+openr, lun, file, /get_lun
+s = ''
+readf, lun, s, format='(a16)'
+retval = -1
+if (strpos(s,'Epics Scan') ge 0) then retval = 1
+close, lun
+free_lun, lun
+return, retval
+
+not_ascii:
+return, -3
+end
+
+
 pro      scan_data::oplot, name=name, index=index, $
                   use_sum=use_sum, use_raw=use_raw, $
                   norm=norm, inorm=inorm, color=color, psym=psym, bw=bw, $
@@ -744,13 +785,52 @@ return
 end
 
 ;;
+
 function scan_data::read_data_file, file
+;
 ; read epics scan data file
+;
+@scan_dims
+retval = -1
+if ((n_elements(file) eq 0) or  (keyword_set(help) ne 0)) then begin
+    print, ' function scan_data::read_data_file(filename)'
+    return, retval
+endif
+;
+
+filetype  = self->filetype(file)
+case filetype of
+    1: begin
+        retval = self->read_ascii_data_file(file)
+    end
+    2: begin
+        retval = self->read_netcdf_data_file(file)
+    end
+    else: begin
+        retval = -3
+    end
+endcase
+if (retval eq 0) then begin
+    print, '   OK.'
+endif else begin
+    print, ' file ', file , ' is not a valid scan data file.'
+endelse
+
+return, retval
+end
+
+
+function scan_data::read_ascii_data_file, file
+;
+; read epics scan data file
+;
 @scan_dims
 
-M_GROUPS    = 50
-MDIM        = 500
-retval = -1
+M_GROUPS = 50
+MPVLIST  = 64
+MTITLES  = 16
+MDIM     = 500
+retval   = -1
 
 ;
 ; read detector and positioner arrays from ascii-dump versions 
@@ -764,6 +844,10 @@ endif
 
 str     = '; '
 print, format='(3a,$)', 'opening file ', file, ' ... '
+
+filetype   = self->filetype(file)
+if (filetype ne 1) then return, retval
+
 openr, lun, file, /get_lun
 tmp_x      = fltarr(MDIM, MAX_POS)
 tmp_det    = fltarr(MDIM, MDIM, MAX_DET)
@@ -771,8 +855,12 @@ vars       = fltarr(MAX_POS+MAX_DET)
 tmp_y      = fltarr(MDIM)
 det_name   = strarr(M_GROUPS)
 pos_name   = strarr(MAX_POS)
+pv_list    = strarr(MPVLIST)
+user_titles = strarr(MTITLES)
 ypos       = ''
 ypv        = ''
+det_desc   = strarr(MAX_DET)
+det_pv     = strarr(MAX_DET)
 det_list   = intarr(MAX_DET)
 group_list = strarr(M_GROUPS)
 Det_String = strarr(m_groups)
@@ -780,124 +868,187 @@ Det_String = strarr(m_groups)
 npts       = -1
 nrow       = -1
 ngroups    = -1
-npos       = 0
-ndet       = 0
+npos       = -1
+ndet       = -1
 first_line = 1
 ncols      = 1
 nline      = 1
-read_labels= 1
 dimen      = 2
-do_parsing = 0
+; read mode: 0  front matter
+;            1  User titles:
+;            2  PV list:
+;            3  scan began at' to ;  'scan ended at'
+;            4  column labels
+;            5  '-----------------'
+;
+read_mode  = 0 
+; 
 print, 'reading ...'
 while not (eof(lun)) do begin
     readf,lun,str
     nline = nline + 1
     string = strtrim(str,2)
-    if (strlen(string) gt 1) then begin
-        char1 = strmid(string, 0, 1) 
-        if ((char1 ne ';') and (read_labels eq 0)) then begin
-; read data
+    if (strlen(string) le 3) then goto, next_line
+    char1 = strmid(string, 0, 1) 
+    char3 = strmid(string, 0, 3) 
+    char8 = strmid(strtrim(string,2) , 0,8) 
+
+    if (strpos(string,'User titles:') ge 1) then begin
+        read_mode = 1
+        nt = 0
+        goto, next_line
+    endif else if (strpos(string,'PV list:') ge 1) then begin
+        read_mode = 2
+        ntitles = nt
+        nt = 0
+        goto, next_line
+    endif else if (strpos(string,'began at time:') ge 1) then begin
+        read_mode = 3
+    endif else if (strpos(string,'column labels:') ge 1) then begin
+        read_mode = 4
+        goto, next_line
+    endif else if (strpos(string,'--------') ge 1) then begin
+        read_mode = 5
+        readf, lun, str
+        npos = npos + 1
+        ndet = ndet + 1
+        ; print, ' npos , ndet = ', npos, ndet
+        vars = fltarr(npos+ndet)
+        goto, next_line
+    endif
+    if (read_mode eq 0) then begin ; front
+        if (first_line eq 1) then begin
+            stmp = strmid(string, 0, 12)
+            s2   = strmid(string, 12, 13)
+            sx   = str_sep(strtrim(s2,2), ' ')
+            if (stmp ne '; Epics Scan') then begin
+                print, ' Not a valid scan file! '
+                goto, endread
+            endif
+            dimen = fix(sx[0])
+            first_line = 0
+        endif
+        if ((dimen ge 2) and (char3 eq ';2D'))  then begin
+            nrow = nrow + 1
+            sc = strmid(string,3, strlen(string))
+            sx = str_sep(strtrim(sc,2), ' ' )
+            tmp_y[nrow] = sx[1]
+            npts = -1
+            n = strpos(string,':', /reverse_search)
+            ypv = strmid(string,4, n-4)
+        endif
+    endif else if (read_mode eq 1) then begin ; user titles
+        if (nt lt MTITLES) then begin
+            tx1 = strtrim( strmid(string,2, strlen(string)), 2)
+            if strlen(tx1) ge 2 then  begin
+                user_titles[nt] = tx1
+                nt  = nt + 1                    
+            endif
+        endif
+    endif else if (read_mode eq 2)  then begin ; PV list
+        if (nt lt MPVLIST) then begin
+            tx1 = strtrim( strmid(string,2, strlen(string)), 2)
+            if strlen(tx1) ge 2 then  begin
+                pv_list[nt] = tx1
+                nt  = nt + 1                    
+            endif
+        endif
+        if ((ypos eq '') and (ypv ne '')) then begin
+; searching for name of 2D positioner  in list of saved values
+            i1  = strpos(string, '(')
+            i2  = strpos(string, ')')
+            if (i2 gt i1) then begin
+                pv =strmid(string, i1+1, i2-i1-1)  
+                if (pv eq ypv) then ypos = strtrim(strmid(string,2,i1-2),2)
+            endif
+        endif
+    endif else if (read_mode eq 3) then begin
+        i = strpos(string,'began at time:')
+        self.start_time = strtrim(strmid(string,i+15,strlen(string)),2)
+        readf, lun, string
+        readf, lun, string
+        i = strpos(string,'ended at time:')
+        self.stop_time = strtrim(strmid(string,i+15,strlen(string)),2)
+        readf, lun, string
+    endif else if (read_mode eq 4)  then begin ; column labels
+; reading list of positioner/detectors for 1d scan
+        ;print, ' mode 4 ', npos, ndet
+        if (char3 eq '; P') then begin
+            npos = npos + 1
+            n  = -1 + fix(strmid(string,3,3))
+            i1 = strpos(string, '{')
+            i2 = strpos(string, '}')
+            pos_name[n]=strmid(string, i1+1, i2-i1-1)  
+        endif else if (char3 eq '; D') then begin
+            ndet = ndet + 1
+            slen   = strlen(string) - 1
+            clast  = strmid(string, slen, slen)
+            if (clast eq 'N') then begin
+                roi = strmid(string, slen-2, slen-1)
+            endif else begin
+                roi = strmid(string, slen-1, slen)
+            endelse
+            ds  = strmid(string, 3, 2)
+; force all non-mca detectors (like, scalars) into individual groups
+            i1  = strpos(string, '{')
+            i2  = strpos(string, '}')
+            i3  = strpos(string, '-->')
+            det_desc[ndet]=strmid(string, i1+1, i2-i1-1)
+            det_pv[ndet]  =strmid(string, i3+4, strlen(string))
+            ; print , ' ds = ', det_desc[ndet], det_pv[ndet]
+            if (strpos(string,'mca') lt 2) then  roi = string
+            for i = 0, m_groups - 1 do begin
+                if det_string[i] eq '' then begin
+                    ngroups      = i
+                    det_string[i]= roi
+                    group_list[i]= ds
+                    i1  = strpos(string, '{')
+                    i2  = strpos(string, '}')
+                    det_name[i]=strmid(string, i1+1, i2-i1-1)  
+                    i1  = strpos(det_name[i], 'mca')
+                    if (i1 ge 0) then begin
+                        i2  = strpos(det_name[i], ':')
+                        il  = i1+3 > i2
+                        det_name[i] = strmid(det_name[i],il+1,strlen(det_name[i]))
+                    endif
+                    goto, next_line
+                endif else if(det_string[i] eq roi) then begin
+                    group_list[i] = group_list[i] + ' ' + ds
+                    goto, next_line
+                endif
+            endfor
+        endif
+    endif else if (read_mode eq 5) then begin ; read data
+        if (char1 ne ';') then begin
             npts = npts + 1
             reads, string, vars            
             if (nrow lt 0) then nrow = 0
             if (nrow eq 0) then  tmp_x[npts, 0:npos-1] = vars[0:npos-1]
             tmp_det[npts, nrow, 0:ndet-1] = vars[npos:npos+ndet-1]
-        endif else begin
-            if (first_line eq 1) then begin
-                stmp = strmid(string, 0, 12)
-                s2   = strmid(string, 12, 13)
-                sx   = str_sep(strtrim(s2,2), ' ')
-                if (stmp ne '; Epics Scan') then begin
-                    print, ' Not a valid scan file! '
-                    goto, endread
-                endif
-                dimen = fix(sx[0])
-                first_line = 0
-            endif
-            char1 = strmid(string, 0, 1) 
-            char3 = strmid(string, 0, 3) 
-            char8 = strmid(strtrim(string,2) , 0,8) 
-            if ((dimen ge 2) and (char3 eq ';2D'))  then begin
-                nrow = nrow + 1
-                if ((nrow gt 5) and ( ((nrow) mod 10) eq 0)) then print, ";"
-                print, format='(a,i3,$)', '  ' , nrow
-                sc = strmid(string,3, strlen(string))
-                sx = str_sep(strtrim(sc,2), ' ' )
-                tmp_y[nrow] = sx[1]
-                npts_old = npts
-                npts = -1
-                if (ypv eq '') then begin
-                    n = strpos(string,':', /reverse_search)
-                    ypv = strmid(string,4, n-4)
-                endif
-            endif else if (char8 eq ';=======')  then begin
-; signal to start looking at 
-                do_parsing = 1
-            endif else if ((read_labels eq 1) and (char8 eq ';-------'))  then begin
-; read column label: done reading list of pos/det, so  declare size of vars here
-                read_labels = 0
-                readf,lun,string
-                vars = fltarr(npos+ndet)
-            endif else if ( do_parsing eq 1)  then begin
-; reading list of positioner/detectors for 1d scan
-                if (char3 eq '; P') then begin
-                    npos = npos + 1
-                    n  = -1 + fix(strmid(string,3,3))
-                    i1 = strpos(string, '{')
-                    i2 = strpos(string, '}')
-                    pos_name[n]=strmid(string, i1+1, i2-i1-1)  
-                endif else if (char3 eq '; D') then begin
-                    ndet = ndet + 1
-                    slen   = strlen(string) - 1
-                    clast  = strmid(string, slen, slen)
-                    if (clast eq 'N') then begin
-                        roi = strmid(string, slen-2, slen-1)
-                    endif else begin
-                        roi = strmid(string, slen-1, slen)
-                    endelse
-                    ds  = strmid(string, 3, 2)
-; force all non-mca detectors (like, scalars) into individual groups
-                    if (strpos(string,'mca') lt 2) then  roi = string
-                    for i = 0, m_groups - 1 do begin
-                        if det_string[i] eq '' then begin
-                            ngroups      = i
-                            det_string[i]= roi
-                            group_list[i]= ds
-                            i1  = strpos(string, '{')
-                            i2  = strpos(string, '}')
-                            det_name[i]=strmid(string, i1+1, i2-i1-1)  
-                            i1  = strpos(det_name[i], 'mca')
-                            if (i1 ge 0) then begin
-                                i2  = strpos(det_name[i], ':')
-                                il  = i1+3 > i2
-                                det_name[i] = strmid(det_name[i],il+1,strlen(det_name[i]))
-                            endif
-                            goto, det_found
-                        endif else if(det_string[i] eq roi) then begin
-                            group_list[i] = group_list[i] + ' ' + ds
-                            goto, det_found
-                        endif
-                    endfor
-                endif
-            endif  else if ((ypos eq '') and (ypv ne '')) then begin
-;
-; searching for name of 2D positioner  in list of saved values
-;
-                i1  = strpos(string, '(')
-                i2  = strpos(string, ')')
-                if (i2 gt i1) then begin
-                    pv =strmid(string, i1+1, i2-i1-1)  
-                    if (pv eq ypv) then ypos = strtrim(strmid(string,2,i1-2),2)
-                endif
-            endif
-        endelse
-det_found:
+        endif else if ((dimen eq 2) and (char3 eq ';2D')) then begin
+            nrow = nrow + 1
+            if ((nrow gt 5) and ( ((nrow) mod 10) eq 0)) then print, ";"
+            print, format='(a,i3,$)', '  ' , nrow
+            sc = strmid(string,3, strlen(string))
+            sx = str_sep(strtrim(sc,2), ' ' )
+            tmp_y[nrow] = sx[1]
+            npts_old = npts
+            npts = -1
+            readf, lun, stmp
+            stmp = strtrim(stmp,2)
+            isx  = strpos(stmp,'ended at time:')
+            if (isx gt 1) then  $
+              self.stop_time = strtrim(strmid(stmp,isx+15,strlen(stmp)),2)
+            readf, lun, stmp
+            readf, lun, stmp
+        endif
     endif
+next_line:
 endwhile
 
-print, " Available groups from map: ", ngroups
+
 dname    = strarr(ngroups+1)
-detectors= intarr(MAX_DET) - 1
+detectors= intarr(ndet)
 for i = 0, ngroups do begin
     if det_name[i] ne ''  then begin
         dname[i] = strtrim(det_name[i],2)
@@ -907,17 +1058,13 @@ for i = 0, ngroups do begin
     endif
 endfor
 
-
-; print, ' detector list:'
-; for i = 0, MAX_DET -1 do print, i, detectors[i]
-
 nx   = npts
 if (nx eq -1) then nx = npts_old
 ny   = nrow
-; print, " nx,ny = ", nx, ny, npts , npts_old
 y    = fltarr(ny+1)
 da   = fltarr(nx+1, ny+1, ndet)
 x    = fltarr(nx+1)
+xa   = fltarr(nx+1,npos)
 for i = 0, nx do begin
     for j = 0, ny do begin
         for k = 0, ndet-1 do da(i,j,k) = tmp_det(i,j,k)
@@ -926,11 +1073,16 @@ endfor
 
 for j = 0, ny do  y[j] = tmp_y[j] 
 for j = 0, nx do  x[j] = tmp_x[j,0] 
-;;    for k = 0, npos-1 do x(i,k) = tmp_x(i,k)
+for j = 0, nx do  begin
+    for k = 0, npos-1 do xa[j,k] = tmp_x[j,k]
+endfor
+
+p_name = strarr(npos)
+for k = 0, npos-1 do p_name[k] = pos_name[k]
 
 sums     = fltarr(nx+1,ny+1,ngroups+1)
 for i = 0, ngroups do begin
-    for j = 0, MAX_DET - 1 do begin
+    for j = 0, ndet - 1 do begin
         if (detectors[j] eq i) then  sums(*,*,i) = sums(*,*,i) + da(*,*,j)
     endfor
 endfor
@@ -948,6 +1100,8 @@ endread:
 close, lun
 free_lun, lun
 
+self.ndetectors= ndet
+self.npositioners= npos
 self.dimension = dimen
 self.filename  = file
 self.xpos      = pos_name[0]
@@ -955,12 +1109,234 @@ self.ypos      = ypos
 self.raw       = ptr_new(da)
 self.sums      = ptr_new(sums)
 self.x         = ptr_new(x)
+self.pos_raw   = ptr_new(xa)
+self.pos_names = ptr_new(p_name)
 self.y         = ptr_new(y)
 self.det_names = ptr_new(dname)
 self.det_list  = ptr_new(detectors)
 self.det_orig  = ptr_new(detectors)
 
+ut = strarr(ndet)
+for i = 0, n_elements(ut)-1 do ut[i] = det_desc[i]
+self.detfull_desc = ptr_new(ut)
+
+ut = strarr(ndet)
+for i = 0, n_elements(ut)-1 do ut[i] = det_pv[i]
+self.detfull_pv   = ptr_new(ut)
+; print, 'size of detfull_pv = ', n_elements(ut), n_elements(*self.detfull_pv)
+
+if (ntitles le 0) then begin
+    ntitles = 2
+    user_titles[0] = '<- No User Titles ->'
+    user_titles[1] = '<- No User Titles ->'
+endif
+ut = strarr(ntitles)
+for i = 0, n_elements(ut)-1 do ut[i] = user_titles[i]
+self.user_titles  = ptr_new(ut)
+
+ut = strarr(nt)
+for i = 0, n_elements(ut)-1 do ut[i] = pv_list[i]
+self.pv_list      = ptr_new(ut)
+
+; print, ' read done'
 return, retval
+end
+
+;
+;
+function scan_data::read_netcdf_data_file, file
+;
+; read epics scan data file in netcdf format
+;
+@scan_dims
+
+M_GROUPS    = 50
+MPVLIST     = 64
+MTITLES     = 16
+MDIM        = 500
+retval = -1
+
+str     = '; '
+print, format='(3a,$)', 'opening file ', file, ' ... '
+
+filetype   = self->filetype(file)
+if (filetype ne 2) then return, retval
+
+ncid = ncdf_open(file,/nowrite)
+at   = ncdf_attinq(ncid, 'title', /global)
+if (at.datatype ne 'UNKNOWN') then begin
+    ncdf_attget, ncid, 'title', /global, ff
+    if (strpos(string(ff), 'Epics Scan: netcdf') ge 0) then retval = -2
+endif
+
+u  = ncdf_inquire(ncid)
+
+dimens = {val:intarr(u.ndims), name:strarr(u.ndims)}
+
+s = ''
+for i = 0, u.ndims - 1 do begin
+    ncdf_diminq, ncid, i, s, n
+    case s of
+        'string length':   nstr = n
+        'scan dimension':  ndim = n
+        'n positioners':   npos = n
+        'n detectors':     ndet = n
+        'n sums':          nsum = n
+        'n user_titles':   n_ut = n
+        'n pv_list':       n_pv = n
+        'nx':              nx   = n
+        'ny':              ny   = n
+        else: begin
+            print,  ' unknown dimension ', s
+        end
+    endcase
+endfor
+
+self.filename    = file
+self.dimension   = ndim
+self.ndetectors  = ndet
+self.npositioners= npos
+self.subtitle    = ''
+self.nplot       = 0
+
+s  = ''
+ncdf_varget, ncid, 'user titles', s
+self.user_titles = ptr_new(string(s))
+
+ncdf_varget, ncid, 'pv list', s
+self.pv_list = ptr_new(string(s))
+
+ncdf_varget, ncid, 'start time', s
+self.start_time = (string(s))
+
+ncdf_varget, ncid, 'stop time', s
+self.stop_time = (string(s))
+
+ncdf_varget, ncid, 'x name', s
+self.xpos = (string(s))
+
+ncdf_varget, ncid, 'y name', s
+self.ypos = (string(s))
+
+ncdf_varget, ncid, 'det desc', s
+self.detfull_desc = ptr_new(string(s))
+
+ncdf_varget, ncid, 'det pv', s
+self.detfull_pv = ptr_new(string(s))
+
+ncdf_varget, ncid, 'sums names', s
+self.det_names = ptr_new(string(s))
+
+ncdf_varget, ncid, 'pos desc', s
+self.pos_names = ptr_new(string(s))
+
+ncdf_varget, ncid, 'x', x
+self.x  = ptr_new(x)
+
+ncdf_varget, ncid, 'y', x
+self.y  = ptr_new(x)
+
+ncdf_varget, ncid, 'sums map', x
+self.det_list  = ptr_new(x)
+self.det_orig = self.det_list
+
+ncdf_varget, ncid, 'positioners', x
+self.pos_raw = ptr_new(x)
+
+ncdf_varget, ncid, 'detectors', x
+self.raw  = ptr_new(x)
+
+ncdf_varget, ncid, 'det sums', x
+self.sums = ptr_new(x)
+
+; ncdf_varput, ncid, 'positioners', (*self.pos_raw)
+; ncdf_varput, ncid, 'det sums',    (*self.sums)
+; ncdf_varput, ncid, 'detectors',   (*self.raw)
+
+ncdf_close, ncid
+
+return, 0
+end
+
+pro      scan_data::save_netcdf, file=file
+;
+; save current data structure to a netcdf file
+;
+; things not saved to netcdf file:
+;  filename, subtitle, plot_colors, nplot, det_orig
+
+
+if (keyword_set(file)  eq 0)  then file = self.filename + '.nc'
+ncid    = ncdf_create(file, /clobber)
+;
+ncdf_attput, ncid, /global, 'title', 'Epics Scan: netcdf version 0.1'
+
+;
+; max string size
+str_max = 48
+str_max = max(str_max > max(strlen((*self.detfull_pv))) > max(strlen((*self.detfull_desc))))
+str_max = max(str_max > max(strlen((self.start_time)))  > max(strlen((self.stop_time))))
+str_max = max(str_max > max(strlen((*self.pv_list)))    > max(strlen((*self.user_titles))))
+str_max = max(str_max > max(strlen((*self.pos_names)))  > max(strlen((*self.det_names))))
+str_max = 8 * (1 + fix(str_max+1)/8) 
+
+nstr = ncdf_dimdef(ncid, 'string length',  str_max)
+ndim = ncdf_dimdef(ncid, 'scan dimension', self.dimension)
+npos = ncdf_dimdef(ncid, 'n positioners',  self.npositioners)
+ndet = ncdf_dimdef(ncid, 'n detectors',    self.ndetectors)
+nsum = ncdf_dimdef(ncid, 'n sums',         n_elements(*self.det_names))
+n_ut = ncdf_dimdef(ncid, 'n user_titles',  n_elements(*self.user_titles))
+n_pv = ncdf_dimdef(ncid, 'n pv_list',      n_elements(*self.pv_list))
+nx   = ncdf_dimdef(ncid, 'nx',             n_elements(*self.x))
+ny   = ncdf_dimdef(ncid, 'ny',             n_elements(*self.y))
+
+id   = ncdf_vardef(ncid, 'user titles', [nstr,n_ut], /char)
+id   = ncdf_vardef(ncid, 'pv list',     [nstr,n_pv], /char)
+id   = ncdf_vardef(ncid, 'start time',  [nstr],      /char)
+id   = ncdf_vardef(ncid, 'stop time',   [nstr],      /char)
+id   = ncdf_vardef(ncid, 'x',           [nx],        /float)
+id   = ncdf_vardef(ncid, 'y',           [ny],        /float)
+id   = ncdf_vardef(ncid, 'x name',      [nstr],      /char)
+id   = ncdf_vardef(ncid, 'y name',      [nstr],      /char)
+id   = ncdf_vardef(ncid, 'positioners', [nx,npos],   /float)
+id   = ncdf_vardef(ncid, 'pos desc',    [nstr,npos], /char)
+id   = ncdf_vardef(ncid, 'det desc',    [nstr,ndet], /char)
+id   = ncdf_vardef(ncid, 'det pv',      [nstr,ndet], /char)
+id   = ncdf_vardef(ncid, 'sums names',  [nstr,nsum], /char)
+id   = ncdf_vardef(ncid, 'sums map',    [ndet],      /short)
+
+if (self.dimension ge 2) then begin
+    id = ncdf_vardef(ncid, 'detectors',   [nx,ny,ndet], /float)
+    id = ncdf_vardef(ncid, 'det sums',    [nx,ny,nsum], /float)
+    print,  ' AAAA '
+endif else begin
+    id = ncdf_vardef(ncid, 'detectors',   [nx,ndet],   /float)
+    id = ncdf_vardef(ncid, 'det sums',    [nx,nsum],   /float)
+endelse
+
+ncdf_control, ncid, /endef
+
+ncdf_varput, ncid, 'user titles', (*self.user_titles)
+ncdf_varput, ncid, 'pv list',     (*self.pv_list)
+ncdf_varput, ncid, 'start time',  (self.start_time)
+ncdf_varput, ncid, 'stop time',   (self.stop_time)
+ncdf_varput, ncid, 'x',           (*self.x)
+ncdf_varput, ncid, 'y',           (*self.y)
+ncdf_varput, ncid, 'x name',      (self.xpos)
+ncdf_varput, ncid, 'y name',      (self.ypos)
+ncdf_varput, ncid, 'positioners', (*self.pos_raw)
+ncdf_varput, ncid, 'det desc',    (*self.detfull_desc)
+ncdf_varput, ncid, 'det pv',      (*self.detfull_pv)
+ncdf_varput, ncid, 'sums names',  (*self.det_names)
+ncdf_varput, ncid, 'sums map',    (*self.det_list)
+ncdf_varput, ncid, 'pos desc',    (*self.pos_names)
+ncdf_varput, ncid, 'det sums',    (*self.sums)
+ncdf_varput, ncid, 'detectors',   (*self.raw)
+
+ncdf_close, ncid
+;
+
+return
 end
 
 
@@ -981,6 +1357,7 @@ if (keyword_set(par) ne 0) then begin
         'xpos':         self.xpos         = val
         'ypos':         self.ypos         = val
         'det_names':    (*self.det_names) = val
+        'pos_names':    (*self.pos_names) = val
         'det_list':     (*self.det_list)  = val
         'plot_colors':  (*self.plot_colors)  = val
     endcase
@@ -995,18 +1372,29 @@ function scan_data::get_param, par
 val = 0
 if (keyword_set(par) ne 0) then begin
     case par of
+        'ndetectors':   val = self.ndetectors
+        'npositioners': val = self.npositioners
         'dimension':    val = self.dimension
         'filename':     val = self.filename
+        'raw_pos':      val = (*self.pos_raw)
         'raw_data':     val = (*self.raw)
         'sums':         val = (*self.sums)
         'x':            val = (*self.x)
         'y':            val = (*self.y)
         'xpos':         val = self.xpos
         'ypos':         val = self.ypos
+        'pos_names':    val = (*self.pos_names)
         'det_names':    val = (*self.det_names)
         'det_list':     val = (*self.det_list)
         'det_orig':     val = (*self.det_orig)
+        'detfull_desc': val = (*self.detfull_desc)
+        'detfull_pv':   val = (*self.detfull_pv)
+        'pv_list':      val = (*self.pv_list)
         'plot_colors':  val = (*self.plot_colors)
+        'user_titles':  val = (*self.user_titles)
+        'ntitles':      val = n_elements(*self.user_titles)
+        'start_time':   val = self.start_time
+        'stop_time':    val = self.stop_time
     endcase
 endif
 
@@ -1015,6 +1403,13 @@ end
 
 function scan_data::get_dimension
 return, self->get_param('dimension')
+end
+function scan_data::get_ndetectors
+return, self->get_param('ndetectors')
+end
+
+function scan_data::get_npositioners
+return, self->get_param('npositioners')
 end
 
 function scan_data::get_filename
@@ -1151,7 +1546,6 @@ end
 
 
 function scan_data::init, file=file
-;
 
 cols = ['blue', 'red', 'black', 'magenta', 'forestgreen']
 self.plot_colors =   ptr_new(cols)
@@ -1159,11 +1553,6 @@ self.plot_colors =   ptr_new(cols)
 
 if (n_elements(file) ne 0) then begin
     u = self->read_data_file(file)
-    if (u eq 1) then begin
-        print, ' file ', file , ' is not a valid scan data file.'
-    endif else begin
-        print, '   OK.'
-    endelse
 endif
 return, 1
 end
@@ -1221,16 +1610,17 @@ pro      scan_data__define
 ;       Aug 03 2001: M Newville
 ;-
 @scan_dims
-
 MAX_SUM_ELEMS = 16  ; max number of detectors to add together for sum
 
 p = ptr_new()
 scan_data = { scan_data, filename:   ' ', dimension: 1, $
-              subtitle:' ', $
+              ndetectors:0, npositioners:0, pos_raw:p, $
+              subtitle:' ',    user_titles:p, pv_list:p, $
               raw:  p, sums:p,  plot_colors:p, nplot:0, $
               x: p, y: p,  xpos: '', ypos:'', $
-              det_names: p, det_list: p, det_orig: p} 
+              start_time:'', stop_time:'', $
+              detfull_desc:p,  detfull_pv:p, $
+              pos_names: p,  det_names: p, $
+              det_list: p, det_orig: p} 
 
 end
-
-
