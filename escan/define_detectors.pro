@@ -29,6 +29,10 @@ case uval of
     end
     'sca_use_net': (*p).data.sca_use_net = event.index
     'med_use_net': (*p).data.med_use_net = event.index
+
+    'save_med': begin
+        (*p).data.save_med = event.select
+    end
     'save': begin
         ; print, ' saving results: '
         med_tot = 0
@@ -81,6 +85,9 @@ case uval of
                 (*p).det.desc[ir]    = ''
             endfor
             x  = (*p).es->set_param('detectors',(*p).det)
+            x  = (*p).es->set_param('save_med',(*p).data.save_med)
+            x  = (*p).es->get_param('save_med')
+            print, ' save full MED spectra?? ', x
         endelse
     end
     'roi_use_all': begin
@@ -150,6 +157,8 @@ MAX_ROI  = 10
 
 ret = (*p).es->lookup_detectors()
 det = (*p).es->get_param('detectors')
+save_med  = (*p).es->get_param('save_med')
+
 det_save  = det
 MAX_DET   = n_elements( det.countPV)
 
@@ -172,6 +181,7 @@ prefix = (*p).es->get_param('prefix')
 MAX_DTY   = n_elements(dgrp.name)
 
 form  = {det_choice:0, det_elem:lonarr(MAX_DET), $
+         save_med:0L, $ 
          det_desc:lonarr(MAX_DET) , use_net: lonarr(MAX_DET), $
          sca_tot:0L, sca_use_net:1L, $
          med_tot:0L, med_use_net:0L, $
@@ -181,7 +191,8 @@ form  = {det_choice:0, det_elem:lonarr(MAX_DET), $
          med_clr_all:lonarr(MAX_ROI)  }
 
 data = {med_use:lonarr(MAX_ROI, MAX_MED), sca_use:lonarr(MAX_SCA) , $
-        med_use_net:0, sca_use_net:1 , med_proto:7, use_med:0, use_sca:0}
+        med_use_net:0, sca_use_net:1 , med_proto:7, use_med:0, $
+        use_sca:0, save_med:save_med}
 
 info  = {es:(*p).es, form:form, $
          det:det,    dgrp:dgrp,  data:data,   $
@@ -234,8 +245,21 @@ x      = Widget_label(lf, value = ' MED  Detector:  Use ')
 info.form.med_use_net = Widget_DROPLIST(lf, value = net_choices,  $
                                  uvalue = 'med_use_net', /dynamic_resize)
 x      = Widget_label(lf, value = ' Counts ')
+
+
 x      = Widget_label(lf, value = '    Total Number Used ')
 info.form.med_tot = Widget_Label(lf, value = ' ')
+;
+
+; save full spectra
+lf    = Widget_Base(sframe, /row)
+x     = Widget_label(lf, value = 'Save Full MED spectra at each point?')
+bbase = Widget_Base(lf, /row,/nonexclusive)
+info.form.save_med = Widget_Button(bbase, xsize=60, value=' ', $
+                                 uvalue = 'save_med')
+Widget_Control, info.form.save_med, SET_BUTTON = save_med
+
+
 
 fr1    = Widget_Base(sframe, /col)
 

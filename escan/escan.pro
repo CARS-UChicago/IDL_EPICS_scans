@@ -601,7 +601,7 @@ end
 
 ;
 ;------------------------------------------------------------------
-pro escan, scan_file=scan_file
+pro escan, scan_file=scan_file, plot_size=plot_size
 ;
 ;  
 print, ' This is escan v 1.0'
@@ -615,7 +615,10 @@ cur_dim      = 0
 ;
 ; define and setup epics_scan object
 s_file   = 'default.scn'
-if (keyword_set(scan_file) ne 0 ) then s_file = scan_file
+if (keyword_set(scan_file) ne 0 ) then s_file   = scan_file
+
+plotsize = 800
+if (keyword_set(plot_size) ne 0 ) then plotsize = plot_size
 es       = obj_new('epics_scan', scan_file = s_file, /use_dialog)
 
 datafile = es->get_param('datafile')
@@ -624,8 +627,8 @@ det      = es->get_param('detectors')
 
 ; cur_scan = es->get_param('current_scan')
 cur_scan = 1
-
-sc       = es->get_param('scan' + string(strtrim(cur_scan, 2)))
+_scan    = 'scan' + string(strtrim(cur_scan,2))
+sc       = es->get_param(_scan)
 cur_dim  = es->get_param('dimension')
 
 cur_scan = cur_scan - 1
@@ -877,7 +880,11 @@ X      = Widget_Button(base2,  value = 'EXIT ',      uval='exit')
 X      = Widget_Label(base2,  value = 'Estimated time:')
 info.form.time_est = Widget_Label(base2,  xsize=190,value = '            ')
 
-sv = obj_new('scanviewer',escan=es)
+sv    = obj_new('scanviewer',escan=es,plot_size=plotsize)
+c     = es->get_param('current_scan')
+_scan = 'scan' + string(strtrim(c,2))
+sc    = es->get_param(_scan)
+
 
 for i = 0, 2 do  sc  = update_scan_settings(info.escan, sc, i)
 

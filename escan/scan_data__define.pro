@@ -800,7 +800,7 @@ endif
 ;
 
 filetype  = self->filetype(file)
-; print, ' file type = ' , filetype
+print, ' file type = ' , filetype
 case filetype of
     1: begin
         retval = self->read_ascii_data_file(file)
@@ -815,7 +815,7 @@ endcase
 if (retval eq 0) then begin
     print, '   OK.'
 endif else begin
-    print, ' file ', file , ' is not a valid scan data file.'
+    print, ' file ', file , ' is not a valid scan data file: ', retval
 endelse
 
 return, retval
@@ -943,10 +943,12 @@ while not (eof(lun)) do begin
         endif
     endif else if (read_mode eq 1) then begin ; user titles
         if (nt lt MTITLES) then begin
-            tx1 = strtrim( strmid(string,2, strlen(string)), 2)
-            if strlen(tx1) ge 2 then  begin
-                user_titles[nt] = tx1
-                nt  = nt + 1                    
+            if strlen(string) ge 2 then  begin
+                tx1 = strtrim( strmid(string,2, strlen(string)), 2)
+                if strlen(tx1) ge 2 then  begin
+                    user_titles[nt] = tx1
+                    nt  = nt + 1                    
+                endif
             endif
         endif
     endif else if (read_mode eq 2)  then begin ; PV list

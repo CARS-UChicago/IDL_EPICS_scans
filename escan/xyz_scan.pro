@@ -4,88 +4,38 @@ pro xyz_scan, scan_file=scan_file, xyz_file=xyz_file, number=number, datafile=da
 ;  of predefined x/y/z stage positions
 
 s_file   = 'default.scn'
-def_file = 'xyzstage.def'
-outfile  = 'scan.dat'
+def_file = 'xyz.ini'
+prefix   = 'scan.dat'
 nrepeat  = 3
 
 if (keyword_set(scan_file) ne 0 )  then  s_file   = scan_file
 if (keyword_set(xyz_file)  ne 0 )  then  def_file = xyz_file
 if (keyword_set(number)    ne 0 )  then  nrepeat  = number
-if (keyword_set(datafile)  ne 0 )  then  outfile  = datafile
+if (keyword_set(datafile)  ne 0 )  then  prefix  = datafile
 
 es  = obj_new('epics_scan', scan_file = s_file)
 x   = es->load_to_crate()
-x   = es->set_param('datafile', outfile)
+x   = es->set_param('datafile', prefix)
 x   = es->set_param('dimension', 1)
 
 scanPV     = '13IDC:scan1'
 scan_pause = '13IDC:scanPause.VAL'
 
-print, ' reading xyzstage definition file ' , def_file
-on_ioerror, bad_file
-openr, dlun,  def_file, /get_lun
-str     = ' '
-line1   =  1
-npts    =  0
-point   = {point, name:'', x:0., y:0., z:0. }
+; read and decode data from xyz.ini file
+mdat  = read_xyzini(xyz_file=def_file)
+npts  = n_elements(mdat.pts)
+;
 
-while not (eof(dlun)) do begin
-    readf, dlun, str
-    str  = strtrim(str,2)
-    if ((str eq '') or (strmid(str, 0, 1)  eq '#')) then goto, loop_end
-    if (line1 eq 1) then begin
-        line1 = 0
-        s = strmid(str, 0, 26) 
-        t = strmid(str, 26, strlen(str)) 
-        if (s ne ';XYZ Stage Definition File') then begin
-            print, ' File ', s_file,  ' is not a valid scan file'
-            return
-        endif
-    endif
-    icol  = strpos(str, ':')
-    ismc  = strpos(str, ';')
-    if ((ismc eq -1) and (icol ge 2)) then begin
-        key = strmid(str,0, icol)
-        val = strtrim(strmid(str,icol+1, strlen(str)), 2)
-        case key of 
-            'motor_x':      motor_x = val
-            'motor_y':      motor_y = val
-            'motor_z':      motor_z = val
-            'point':  begin
-                tmp      = point
-                tmp.name = val
-                readf, dlun, str
-                str  = strtrim(str,2)
-                n = string_array(str, arr)
-                if (n ge 1) then    tmp.x = arr[0]
-                if (n ge 2) then    tmp.y = arr[1]
-                if (n ge 3) then    tmp.z = arr[2]
-                if (npts ge 1) then begin
-                    pts = [pts, tmp]
-                endif else begin
-                    pts = tmp
-                endelse
-                npts   = npts + 1
-                tmp    = ''
-            end
-            else: x = 1
-        endcase
-    endif
-    loop_end:
-endwhile
-
-close, dlun
-free_lun, dlun
-tmp = ''
 continue_to_next = 1
 print, ' will scan ', npts, ' points '
 
 for i = 0, npts - 1 do begin
-    print , ' moving to position  ' , pts[i].name , ' to ', pts[i].x, pts[i].y, pts[i].z
-    outfile = pts[i].name + '.001'
-    s = caput(motor_x, pts[i].x)
-    s = caput(motor_y, pts[i].y)
-    s = caput(motor_z, pts[i].z)
+    print , ' moving to position  ' , mdat.pts[i].name , $
+      ' to ', mdat.pts[i].x, mdat.pts[i].y, mdat.pts[i].z
+    outfile = prefix + '_' + mdat.pts[i].name + '.001'
+    s = caput(mdat.motor_x,  mdat.pts[i].x)
+    s = caput(mdat.motor_y,  mdat.pts[i].y)
+    s = caput(mdat.motor_z,  mdat.pts[i].z)
     wait, 10.0
 
     for j = 0, nrepeat - 1 do begin
@@ -100,11 +50,11 @@ for i = 0, npts - 1 do begin
         scanning = 1
         while scanning eq 1 do begin
             resume:
-             s = caget('13IDC:scan1.EXSC', scanning)
-             c = get_kbrd(0)
-             c = strlowcase(c)
-             if ((c eq string(16B)) or (c eq 'p')) then goto, interrupt
-             wait, 0.5
+            s = caget('13IDC:scan1.EXSC', scanning)
+            c = get_kbrd(0)
+            c = strlowcase(c)
+            if ((c eq string(16B)) or (c eq 'p')) then goto, interrupt
+            wait, 0.5
         endwhile
         
         x   = es->write_scan_data()
@@ -119,10 +69,6 @@ endfor
 return
 
 ;;-----------------------------------;;
-bad_file:
-  print, '  Warning: XYZ definition file ', bad_file,  ' could not be loaded.'
-  return
-
 time_out:
   print, ''
   print, 'scan timed-out... cannot get scanning status'

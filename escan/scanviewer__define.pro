@@ -1,16 +1,15 @@
+
 pro scanviewer::scan_finished
 
 widget_control, self.form.start_btn, set_value='Start Scan'
 widget_control, self.form.progress,  set_value='Scan Finished'
-; widget_control, self.form.time_rem,  set_value = sec2hms(0.0)
+; widget_control, self.form.time_rem,  set_value = ' '
 self.is_scanning = 0
-
-print, ' entered scan finished ' , self.dimension
+self.data.donecount = 0
 self->plot_data
 
 if (self.dimension eq 1) then begin
-    x = self.es->write_scan_data()
-    x = self.es->close_scanfile()
+    if (self.is_scan_master) then  x = self.es->write_scan_data()
     self.cpt2   = 0
     self.cpt1   = 0
     prog_str = ' Scan Done:  wrote '+ self.datafile
@@ -31,19 +30,21 @@ if (self.dimension eq 1) then begin
         widget_control, self.form.progress,  set_value= prog_str
         self->start_scan
     endif else begin
-        self.is_scanning = 0
+        self.is_scan_master = 0
+        self.is_scanning    = 0
         widget_control, self.form.time_rem,  set_value = sec2hms(0.0)
     endelse
     
 endif else if (self.dimension eq 2) then begin
     short_labels= 1
     if  (self.cpt2 gt 1 ) then short_labels=0
-    x = self.es->write_scan_data(short_labels=short_labels)
+    if (self.is_scan_master) then  begin
+        x = self.es->write_scan_data(short_labels=short_labels)
+    endif
     prog_str = ' 2D Scan: ' +  f2a(self.cpt2) + ' / ' + f2a(self.mpts2) + $
       ' Done: wrote ' + self.datafile
     widget_control, self.form.progress,  set_value= prog_str
     if  ( self.cpt2 lt self.mpts2 ) then begin
-        self->next_2d_row
         self->start_scan,  /no_header
     endif else begin
         x = self.es->close_scanfile()
@@ -53,7 +54,8 @@ endif else if (self.dimension eq 2) then begin
         widget_control, self.form.datafile,  set_value=self.datafile
         widget_control, self.form.progress,  set_value= prog_str
 
-        self.is_scanning = 0
+        self.is_scan_master = 0
+        self.is_scanning    = 0
         widget_control, self.form.time_rem,  set_value = sec2hms(0.0)
     endelse
 endif
@@ -100,13 +102,12 @@ end
 
 pro scanviewer::update_point
 ; 
-
+; print, 'scanviewer update point'
 prog_str = " Point " + f2a(self.cpt1) + " / " + f2a( self.mpts1 )
 if (self.dimension eq 2) then begin
     prog_str = prog_str + '  Row '+ f2a(self.cpt2) + ' / ' + f2a(self.mpts2) 
 endif
 widget_control, self.form.progress, set_value = prog_str
-
 
 ; time estimate
 c  = self.cpt_total
@@ -123,42 +124,46 @@ if ((self.cpt2 ge 1) and (self.dimension eq 2)) then $
 
 self->plot_data
 
-if (self.data.save_med eq 1) then begin
-    w = self.es->check_scan_wait()
-    if (w) then  x = self.es->write_med_file(pt=cpt, pt2=self.cpt2)
-endif
+
+; if (self.data.save_med eq 1) then begin
+;     w = self.es->check_scan_wait()
+;     if (w) then  x = self.es->write_med_file(pt=cpt, pt2=self.cpt2)
+; endif
 
 return
 end
 
 
 pro scanviewer::plot_data
+; print, 'scanviewer plot_data'
+
 ;
 ; get data from crate and plot it 
 npts = self.cpt1
 if (npts le 0) then return
 
+x   = 0.
 if (self.is_scanning) then begin
     ; print, 'mdets = ', self.plot.mdets, npts
     for i = 0, self.plot.mdets - 1 do begin
         d = string(i+1,format='(i2.2)') 
-        s = caget(self.scanpv1+'.D'+d+'CV', x)
+        s = ca_get(self.scanpv1+'.D'+d+'CV', x)
         self.data.da[i,npts-1] = x
     endfor
     for i = 0, 3 do begin
         d = string(i+1,format='(i1.1)')
-        s = caget(self.scanpv1+'.P'+d+'CV', x)
+        s = ca_get(self.scanpv1+'.P'+d+'CV', x)
         self.data.p1pa[i,npts-1]  = x
     endfor
 endif else begin
     for i = 0, 3 do begin
         d =  string(i+1,format='(i1.1)')
-        s = caget(self.scanpv1+'.P'+d+'PA', x)
+        s = ca_get(self.scanpv1+'.P'+d+'PA', x)
         self.data.p1pa[i,*]  = x
     endfor
     for i = 0, self.plot.mdets - 1 do begin
         d = string(i+1,format='(i2.2)') 
-        s = caget(self.scanpv1+'.D'+d+'DA', x)
+        s = ca_get(self.scanpv1+'.D'+d+'DA', x)
         self.data.da[i,*] = x
     endfor
     npts = self.mpts1
@@ -265,20 +270,18 @@ if (npts gt 1) then begin
           color=set_color( (*self.plot.colors)[jcol2] )
     endif
 endif
-
-
 return
 end
 
-
-
 pro  scanviewer::abort
-print, ' scanviewer abort'
+print, ' aborting scan'
 ; abort scan
-if (self.is_scan_master) then begin
+; if (self.is_scan_master) then begin
     widget_control, self.form.progress,  set_value='Aborting Scan'
     self.ask_abort   = 1
     self.is_scanning = 0
+    self->pause, force = 0
+
     self.is_paused   = 0
     self.auto_paused = 0
     self.cpt1        = 0
@@ -287,8 +290,11 @@ if (self.is_scan_master) then begin
     widget_control, self.form.start_btn, set_value='Start Scan'
     widget_control, self.form.progress,  set_value='Scan Aborted'
     widget_control, self.form.iscan ,    set_value= f2a(self.data.iscan)
-    widget_control, self.form.time_rem,  set_value = sec2hms(0.0)
-endif
+    widget_control, self.form.time_rem,  set_value= ' '
+; endif
+x = self.es->write_scan_data()
+x = self.es->close_scanfile()
+self.is_scan_master = 0
 return
 end
 
@@ -304,7 +310,8 @@ if (n_elements(force) gt 0) then begin
     val   = force
 endif
 
-if ((self.is_scan_master) and (self.is_scanning eq 1)) then begin
+; if ((self.is_scan_master) and (self.is_scanning eq 1)) then begin
+if ((self.is_scanning eq 1)) then begin
     p = 0
     if (self.is_paused eq 0) then p = 1
     if (forced) then p = val
@@ -324,16 +331,19 @@ return
 end
 
 pro scanviewer::next_2d_row
+  ;  print, ' next 2d row'
   widget_control, self.form.progress,  set_value='Moving to Next Row ...'
   for i = 0, 3 do begin
       if (self.data.p2pv[i] ne '') then $
           x   = caput(self.data.p2pv[i], self.data.p2pa[i,self.cpt2-1] )
   endfor
   x = wait_for_motor(motor = self.data.p2pv[0], maxtrys=200, wait_time=0.01)
+
   wait, self.data.wait2dscan
   for i = 0, 3 do begin
       if (self.data.p2pv[i] ne '') then begin
-          x   = caget(self.data.p2pv[i], cpv)
+          ; print, ' pos ', i, self.data.p2pv[i]
+          x   = ca_get(self.data.p2pv[i], cpv)
           self.data.p2pa[i,self.cpt2-1] = cpv
           str = ';2D ' + self.data.p2pv[i] + ': ' +  f2a(cpv)
           x   = self.es->write_to_scanfile(str)
@@ -343,7 +353,7 @@ pro scanviewer::next_2d_row
 return
 end
 
-pro scanviewer::start_scan, no_header=no_header, get_start_time=get_start_time
+pro scanviewer::start_scan, no_header=no_header
 ;
 ; does 'scan1' for scan_viewer
 
@@ -356,13 +366,13 @@ self.is_paused      = 0
 self.auto_paused    = 0
 
 self.dimension = self.es->get_param('dimension')
-lun = self.es->open_scanfile(/append)
+lun =  self.es->open_scanfile(/append)
 if ((self.dimension eq 1) or (self.cpt2 le 0)) then $
   str =  '; Epics Scan ' + f2a( self.dimension ) +  ' dimensional scan'
 x   = self.es->write_to_scanfile(str)                
 self.cpt1  = 0
 
-; print ,' start_scan:  starting scan: ', self.dimension, self.npts_total
+; print ,' start_scan:  ', self.dimension, self.npts_total
 
 widget_control, self.form.progress,  set_value=' Waiting ...'
 widget_control, self.form.iscan ,    set_value=  f2a(self.data.iscan)
@@ -373,10 +383,10 @@ px  = fltarr(self.mpts1+2)
 spv = self.es->get_scan_param(0,'scanpv')
 for i = 0, 3 do begin
     x =  string(i+1,format='(i1.1)')
-    s = caget(spv+'.P'+x+'PA', px)
+    s = ca_get(spv+'.P'+x+'PA', px)
     self.data.p1pa[i,*]  = px
 endfor
-x  = caget(spv +'.P1PV', pvn)
+x  = ca_get(spv +'.P1PV', pvn)
 for i = 0,  n_elements(mots.name)-1 do begin
     if (strtrim(mots.pv[i],2) eq pvn) then begin
         self.plot.xlab   = mots.name[i]
@@ -384,16 +394,13 @@ for i = 0,  n_elements(mots.name)-1 do begin
     endif
 endfor
 
-               
+             
 if (self.dimension eq 2) then begin
     self.cpt2       = self.cpt2 + 1
     self->next_2d_row
 endif
 
 Widget_Control, self.form.usertext, get_value=titles
-
-if (keyword_set(get_start_time) ne 0) then self.data.start_time = dxtime()
-
 if (write_header) then begin
     x = self.es->start_scan1d(user_titles=titles)
 endif else begin
@@ -405,8 +412,9 @@ widget_control, self.form.time_est,  set_value= sec2hms( x )
 widget_control, self.form.pause_btn, set_value='Pause Scan'
 widget_control, self.form.start_btn, set_value='Abort Scan'
 widget_control, self.form.progress,  set_value='Scan Starting'
-widget_control, self.form.timer,     time = 0.25
+widget_control, self.form.timer,     time = 0.5
     
+
 return
 end
 ;
@@ -442,52 +450,41 @@ if (tag_names(event, /structure_name) eq 'WIDGET_TIMER') then begin
     exec      = self.is_scanning
     mon_exec  = cacheckmonitor(self.monitors.exec)
     mon_pause = cacheckmonitor(self.monitors.pause)
-    mon_cpt   = cacheckmonitor(self.monitors.cpt)
+    ; mon_cpt   = cacheckmonitor(self.monitors.cpt)
+    s         = ca_get(self.monitors.cpt, cpt)
+    if (s lt 0) then begin
+        s    = ca_get(self.monitors.cpt, cpt)
+        if (s lt 0) then  cpt = self.cpt1
+    endif
+
+    ; print, ' timer event: ', self.is_scanning,  self.is_scan_master, mon_exec,  mon_pause, cpt
+
     if (exec) then begin
-        ; print, ' monitors: exec, pause, cpt: ', mon_exec,  mon_pause, mon_cpt
-        m  = caget(self.monitors.exec, xxe)
-        m  = caget(self.monitors.pause,xxp)
-        m  = caget(self.monitors.cpt,  xxc)
-        ; print, ' exec, pause, cpt' , xxe, xxp, xxc
+        ; print, ' timer: ', self.is_scanning,  mon_exec,  mon_pause
+        m  = ca_get(self.monitors.exec, xxe)
+        m  = ca_get(self.monitors.pause,xxp)
+        ; m  = ca_get(self.monitors.cpt,  xxc) 
     endif
-
-    if (mon_cpt) then begin
-        s = caget(self.monitors.cpt,cpt)
-        print, 'cpt event: ', self.cpt1, ' to ', cpt
-        if (cpt gt self.cpt1) then begin
-            self.cpt1      = cpt
-            self.cpt_total = self.cpt_total + 1
-            if (self.is_scanning)  then self->update_point
-        endif
-    endif
-
-    if (self.is_scanning and self.is_scan_master and (self.cpt1  eq self.mpts1)) then begin
-        print, 'scan appears done'
-;        self.is_scanning = 0
-    endif
-
-
     if (mon_exec) then begin
-        s = caget(self.monitors.exec,exec)
-        print, 'exec event ', self.is_scan_master, exec, self.is_scanning
-        if (mon_exec and self.is_scan_master) then begin
+        s = ca_get(self.monitors.exec,exec)
+        ; print, 'exec event ', self.is_scan_master, exec
+        ; print, 'exec event: ',  exec
+        ; if (mon_exec and self.is_scan_master) then begin
+        if (mon_exec) then begin
             if (self.is_scanning and (exec eq 0)) then begin
-                if (self.is_paused eq 1) then self->pause,force=0
                 self->scan_finished
             endif 
-;            else begin
-;                print, ' scan has started '
-;            endelse
             self.cpt1           = 0
         endif 
         self.is_scanning = exec
         if (exec) then  self.cpt1        = 0
     endif
 ;
-    if (mon_pause and self.is_scan_master) then begin
+    ; if (mon_pause and self.is_scan_master) then begin
+    if (mon_pause) then begin
         paused = self.is_paused
-        s = caget(self.monitors.pause,paused)
-        print, 'scan pause went from ', self.is_paused, ' to ', paused
+        s = ca_get(self.monitors.pause,paused)
+        ; print, 'scan pause went from ', self.is_paused, ' to ', paused
         if (paused ne self.is_paused) then  self->pause
     endif
 ;
@@ -495,7 +492,7 @@ if (tag_names(event, /structure_name) eq 'WIDGET_TIMER') then begin
 ; if scanning (and if this is the scan master) then 
     if ((self.wait_for_lock eq 1) and (self.is_scanning eq 1)) then begin
         ok_x   = self.es->beam_ok()
-        if (self.is_scan_master eq 1) then begin
+        ; if (self.is_scan_master eq 1) then begin
             if ((self.auto_paused eq 0) and (ok_x eq 0)) then begin
                 self.auto_paused   = 1
                 self->pause, force = 1
@@ -503,20 +500,54 @@ if (tag_names(event, /structure_name) eq 'WIDGET_TIMER') then begin
                 self.auto_paused   = 0
                 self->pause, force = 0
             endif
-        endif
+        ; endif
         if (ok_x eq 0) then begin
             widget_control, self.form.progress,  set_value='Scan Paused: No Beam'
         endif
     endif
 
+    ; if (mon_cpt) then begin
+    if (cpt gt self.cpt1) then begin
+        ; print, 'cpt: ', self.cpt1, ' -> ', cpt
+        self.cpt1      = cpt
+        self.cpt_total = self.cpt_total + 1
+        if (self.is_scanning)  then self->update_point
+    endif
+    ; endif
+    msg = ''
 
-    widget_control, event.id, timer=0.10
+    if (self.data.save_med eq 1) then begin
+        w = self.es->check_scan_wait()
+        if (w) then  begin
+            ; print, ' write med spectra ', cpt, self.cpt2
+            x = self.es->write_med_file(p1=cpt, p2=self.cpt2)
+            ; x = self.es->clear_scan_wait()
+        endif
+    endif
+
+
+    if (self.is_scanning and (cpt  eq self.mpts1)) then begin
+        print, 'scan appears done: ', cpt, self.cpt2, self.data.donecount
+        self.data.donecount = self.data.donecount + 1
+        wait, 0.005
+        cpt = 0
+        if (self.data.donecount gt 5) then  begin
+            print,' forcing scan to finished '
+            self->scan_finished
+            self.cpt1           = 0
+            self.data.donecount = 0
+            self.is_scanning    = 1
+        endif
+        ; self.is_scanning = 0
+    endif
+
+    widget_control, event.id, timer=0.50
 
 endif else begin
     widget_control, event.id,  get_uvalue=uval
     if (strpos(uval,'trace_') ge 0) then  begin
         ; print, ' trace event: ', event.top
-        ; self->update_detector_lists, /no_lookup
+        self->update_detector_lists, /no_lookup
         self->plot_data
     endif
     x  = self.es->get_param('total_time')
@@ -528,11 +559,14 @@ endif else begin
         'start_scan': begin
             self.dimension = self.es->get_param('dimension')
             ; print, ' start scan  ', self.is_scanning, self.dimension
-            print, self.is_scanning
+            ; print, self.is_scanning
             if (self.is_scanning eq 0)  then begin
                 self->update_detector_lists
+                self.data.save_med  = self.es->get_param('save_med')
+                print, ' save_med = ',                 self.data.save_med
                 self.is_scan_master = 1
                 self.data.iscan     = 1
+                self.data.donecount = 0
                 self.cpt_total      = 0
                 self.cpt1           = 0
                 self.mpts1          = self.es->npts(dim=1)
@@ -548,15 +582,16 @@ endif else begin
                     pvn             = ''
                     for i = 0, 3 do begin
                         x  =  string(i+1,format='(i1.1)')
-                        s  = caget(s2pv+'.P'+x+'PA', px)
+                        s  = ca_get(s2pv+'.P'+x+'PA', px)
                         for jj = 0, n_elements(px)-1 do self.data.p2pa[i,jj]  = px[jj]
-                        s  = caget(s2pv+'.P'+x+'PV', pvn)
+                        s  = ca_get(s2pv+'.P'+x+'PV', pvn)
                         self.data.p2pv[i]   = pvn
                     endfor
                 endif
-                self->start_scan, /get_start_time
+                self.data.start_time = dxtime()
+                self->start_scan
                 mon_exec = cacheckmonitor(self.monitors.exec)
-                s        = caget(self.monitors.exec,exec)
+                s        = ca_get(self.monitors.exec,exec)
             endif else begin
                 self->abort
             endelse
@@ -581,8 +616,8 @@ return
 end
 
 
-function scanviewer::init, escan=escan, scan_file=scan_file, prefix=prefix
-
+function scanviewer::init, escan=escan, scan_file=scan_file, prefix=prefix, $
+                   plot_size=plot_size
 ;
 ; gui for viewing and running epics scans:
 ; uses Epics Scan object, which can be supplied or created
@@ -595,6 +630,9 @@ print, ' This is ScanViewer version 1.99x'
 ;
 @scan_dims
 
+plotsize = 750.0
+if (keyword_set(plot_size) ne 0)  then plotsize = plot_size
+
 if (keyword_set(escan) eq 0)  then begin
     escan = obj_new('EPICS_SCAN', scan_file=scan_file, prefix=prefix)
 endif
@@ -606,6 +644,7 @@ det_desc     = self.es->get_detector_list( /desc)
 self.plot.mdets = self.es->get_param('ndetectors')
 cur_dim      = self.es->get_param('dimension')
 prefix       = self.es->get_param('prefix')
+self.msgpv   = self.scanpv1 + '.SMSG'
 
 self.mpts1   = self.es->npts(dim=1)
 self.mpts2   = self.es->npts(dim=2)
@@ -626,14 +665,12 @@ self.monitors.cpt   = self.scanpv1 + '.CPT'
 self.monitors.pause = prefix + 'scanPause.VAL'
 
 
-print, 'monitors: ', self.monitors.exec,  self.monitors.pause,  self.monitors.cpt
 
 tags = tag_names(self.monitors)
 u = ''
 for i = 0, n_tags(self.monitors)-1 do begin
     x = casetmonitor(self.monitors.(i))
-    x = caget(self.monitors.(i), u)
-    print, ' mon ', i, ' : ' , self.monitors.(i), u
+    x = ca_get(self.monitors.(i), u)
 endfor
 
 !p.background = set_color('white')
@@ -643,9 +680,8 @@ self.plot.charsize  = 1.5
 self.plot.xlab      = ''
 self.plot.xunits    = ''
 
-plot_size         = 850.0
-self.plot.xsize   = fix(plot_size)
-self.plot.ysize   = fix(plot_size * (0.63))
+self.plot.xsize   = fix(plotsize)
+self.plot.ysize   = fix(plotsize * (0.63))
 self.plot.syms    = ptr_new(['Solid', '-+-', '-*-', ' + ', ' * '])
 self.plot.colors  = ptr_new(['blue',   'black', 'red',      'darkgreen', $
                             'magenta', 'cyan', 'goldenrod', 'purple'])
@@ -670,8 +706,8 @@ top  = widget_base(main,/row)
 tx   = widget_base(top,/col)
 
 uv_  = ['op','num','den', 'sym','col']
-ttls = ['Trace 1:', 'Trace 2:']
-
+; ttls = ['Trace 1:', 'Trace 2:']
+ttls = ['Plot: ', 'Trace 2:']
 
 i = 0
 ; for i = 0, 1 do begin
@@ -778,7 +814,7 @@ device, retain=1
 !p.color      = set_color('black')
 plot, intarr(100), /nodata
 
-widget_control, self.form.timer,     time = 1.0
+widget_control, self.form.timer,     time = 0.5
 widget_control, main, set_uvalue=self
 xmanager, 'scanviewer', main,  event='dummy_eh', /no_block
 
@@ -800,7 +836,7 @@ o     = obj_new()
 
 data  = {data, da:da, p1pa:p1pa, p2pa:p2pa, $
          x_cur:0., y1_cur:0., y2_cur:0,  $
-         nscans:1, iscan:1 , $
+         nscans:1, iscan:1, donecount:0, $
          start_time:0.d00, save_med:0L, $
          p2pv:p2pv, wait2dscan:1.00 }
 
@@ -829,6 +865,7 @@ scanviewer = {scanviewer, $
               datafile:'', $
               scanpv1:'', $
               scanpv2:'', $
+              msgpv:'', $
               dimension:1, $
               ask_abort:0, ask_start:0, ask_pause:0, $
               wait_for_lock:0, $

@@ -9,13 +9,24 @@ x = caput(pv,val)
 ; print, ' CA_PUT ', pv
 return, x
 end
+function ca_get, pv, val, _extra=extra
+;
+s = caget(pv, val, _extra=extra)
+if (s ne 0) then begin
+    wait, 0.1
+    s   = ca_get(pv, val, _extra=extra)
+    if (s ne 0) then val = 0.
+endif
+
+return, s
+end
 
 function epics_scan::beam_ok
 ;
 ;
 r = 1
-v = caget(self.beam_ok_pv, lock)
-v = caget(self.shutter_pv, open)
+v = ca_get(self.beam_ok_pv, lock)
+v = ca_get(self.shutter_pv, open)
 if ((lock eq 0) or (open eq 0)) then r = 0
 
 return, r
@@ -25,7 +36,7 @@ end
 function epics_scan::get_current_dimension
 v = self.prefix + 'ScanDim.VAL'
 d = 0
-x = caget(v,d)
+x = ca_get(v,d)
 return, d
 end
 
@@ -58,7 +69,7 @@ function epics_scan::is_scanning, dim=dim
 ;
 if (keyword_set(dim) eq 0) then dim = 1
 dim = dim-1 < 2 > 0
-v = caget(self.scan[dim].scanpv + '.EXSC',ret)
+v = ca_get(self.scan[dim].scanpv + '.EXSC',ret)
 return, ret
 end
 
@@ -67,7 +78,7 @@ function epics_scan::cpt, dim=dim
 if (keyword_set(dim) eq 0) then dim = 1
 dim = dim-1 < 2 > 0
 ret = 0
-v = caget(self.scan[dim].scanpv + '.CPT',ret)
+v = ca_get(self.scan[dim].scanpv + '.CPT',ret)
 return, ret
 end
 
@@ -76,7 +87,7 @@ function epics_scan::npts, dim=dim
 if (keyword_set(dim) eq 0) then dim = 1
 dim = dim-1 < 2 > 0
 ret = 0
-v   = caget(self.scan[dim].scanpv + '.NPTS',ret)
+v   = ca_get(self.scan[dim].scanpv + '.NPTS',ret)
 return, ret
 end
 
@@ -113,10 +124,10 @@ if (self.paramfile ne ' ') then begin
                 ti = tx +  " ("+ pv+ ')'
             endif else if (strupcase(strmid(pv,il-4,4)) eq '.VAL') then begin
                 dv = strmid(pv,0,il-4) + '.DESC'
-                stat = caget(dv, tn)
+                stat = ca_get(dv, tn)
                 if (stat eq 0) then ti = tn + " ("+ pv+ ')'
             endif
-            stat = caget(pv, val)
+            stat = ca_get(pv, val)
             if (stat ne 0) then begin
                 output = '; ' + ti + tab + " not connected "
             endif else begin
@@ -138,9 +149,12 @@ return, ret
 end
 
 function epics_scan::close_scanfile
-close, self.lun
-free_lun, self.lun
-self.lun = -3
+; print, 'close scanfile'
+if (self.lun gt 0) then begin
+    close, self.lun
+    free_lun, self.lun
+    self.lun = -9
+endif
 return, 0
 end
 
@@ -151,22 +165,30 @@ function epics_scan::write_to_scanfile, s
 catch, error
 ret = -1
 if (error ne 0) then return, ret
-u   = strtrim(s,2)
-if ((self.lun gt 0) and (strlen(u) ge 1)) then begin
-    printf, self.lun, strtrim(s,2)
+u  = strtrim(s,2)
+; print, ' write to scanfile ', s
+l  = self->open_scanfile(/append)
+if ((l gt 0) and (strlen(u) ge 1)) then begin
+    printf, l, strtrim(s,2)
     ret = strlen(u)
 endif 
 return, ret
 end
 
 function epics_scan::open_scanfile, append=append
-
+;
+; open a scan file (unless already opened) 
 if (self.datafile eq ' ') then  self.datafile = 'scan_001.dat'
 app  = 1
 if (n_elements(append) ne  0)   then  app = append
-openw,  lun,  self.datafile,  /get_lun, append=app
-
-self.lun = lun
+if (self.lun le 0) then begin
+    openw,  lun,  self.datafile,  /get_lun, append=app
+    self.lun = lun
+  ;  print, 'open scan file ', self.datafile
+endif 
+;else begin
+;    print, 'scan file ', self.datafile, ' already opened. ',self.lun
+;endelse
 return, self.lun
 end
 
@@ -183,11 +205,12 @@ if (n_elements(short_labels) ne  0)   then  write_labels = short_labels
 ; print, ' write_scan_data,  labels = ' , write_labels
 dat = self->read_data_from_crate()
 lun = self.lun
+
 mpos = n_elements(dat.p_used)
 mdet = n_elements(dat.d_used)
 npts = dat.npts
 x    = self->lookup_positioners()
-
+lun  = self->open_scanfile(/append)
 printf, lun, '; scan ended at time: ' , systime(0)
 if (write_labels eq 1) then begin
     printf, lun, '; n_points      = ', npts
@@ -243,6 +266,7 @@ endfor
 
 ; flush file buffer for sure
 flush, lun
+x = self->close_scanfile()
 return, ret
 end
 
@@ -256,7 +280,7 @@ stime  = systime(0)
 ; and return -1
 ; print, '  In start_scan1d'
 
-r = caget(self.shutter_pv, shutter)
+r = ca_get(self.shutter_pv, shutter)
 ; if ((shutter ne 1) or (r ne 0)) then return, -1
 
 ;
@@ -270,11 +294,9 @@ result = ca_put(self.scan[0].scanpv + '.AWCT',user_wait)
 ; start scan
 result = ca_put(self.scan[0].scanpv + '.EXSC', 1)
 
-if (self.lun lt -2) then begin
-    x  = self->open_scanfile(/append)
-endif
-lun = self.lun
-
+x= self->open_scanfile(/append)
+lun  = self.lun
+; print, 'start_scan1d: lun  = ', lun
 if (result ne 0) then return, result
 write_file = 1
 if (keyword_set(no_file)) then  write_file = 0
@@ -316,10 +338,10 @@ y   = self.scan[self.current_scan-1].scanpv
 print, 'checking scan limits for scan ',y
 x1  = ca_put(y + '.CMND', 1)
 wait, 0.25
-x   = caget(y + '.ALRT', ret)
+x   = ca_get(y + '.ALRT', ret)
 if (x ne 0) then begin
     wait, 0.5
-    x   = caget(y + '.ALRT', ret)
+    x   = ca_get(y + '.ALRT', ret)
     if (x ne 0) then ret = x
 endif
 return, ret
@@ -392,17 +414,19 @@ return, n
 end
 
 
-function epics_scan::write_med_file, pt=pt, pt2=pt2, file=file
+function epics_scan::write_med_file, p1=p1, p2=p2, file=file
 ; 
 retval = -1
 if (obj_valid(self.med_obj)) then begin
     if (keyword_set(file) eq 0) then begin
-        if (keyword_set(pt)  ne 0) then  pt = 0
-        if (keyword_set(pt2) ne 0) then  pt2 = 0
-
-        file = self.datafile  + '__'+ string(pt+1,format='(i3.3)')
-        x    = caget(self.prefix + 'ScanDim.VAL', curdim)
-        if (curdim ge 2) then file = file + '_'+ f2a(pt2+1)
+        px1 = 0
+        px2 = 0
+        if (n_elements(p1) ne 0)  then  px1 = p1
+        if (n_elements(p2) ne 0)  then  px2 = p2
+        ;  print,' savemed: ', px1, px2
+        file = self.datafile  + '__'+ string(px1+1,format='(i3.3)')
+        x    = ca_get(self.prefix + 'ScanDim.VAL', curdim)
+        if (curdim ge 2) then file = file + '_'+ f2a(px2+1)
         file = file + '.xrf'
     endif
     am_waiting  = self->check_scan_wait()
@@ -417,12 +441,13 @@ end
 
 function epics_scan::check_scan_wait
 wait = 0
-x = caget(self.scan[0].scanpv + '.WTNG', wait)
+x = ca_get(self.scan[0].scanpv + '.WTNG', wait)
 return, wait
 end
 
 function epics_scan::clear_scan_wait
-x = caget(self.scan[0].scanpv + '.WAIT', 0)
+; print, ' clear scan wait ' , self.scan[0].scanpv + '.WAIT'
+x = ca_put(self.scan[0].scanpv + '.WAIT', 0)
 return, x
 end
 
@@ -439,15 +464,19 @@ function epics_scan::read_data_from_crate
 ;  pauses scan while reading!
 SPV   = self.scan[0].scanpv
 ; Pause Scan for read
-x     = caget(self.prefix + 'scanPause.VAL', pause_val)
-x     = ca_put(self.prefix + 'scanPause.VAL', 1)
+; x     = ca_get(self.prefix + 'scanPause.VAL', pause_val)
+; x     = ca_put(self.prefix + 'scanPause.VAL', 1)
 
 ;
-M_DET  = n_elements(self.detectors.countPV)
-M_POS  = n_elements(self.scan[0].drives)
+M_DET  = n_elements(self.detectors.countPV) > 1
+M_POS  = n_elements(self.scan[0].drives) > 1
 p_used = intarr(M_POS)
 d_used = intarr(M_DET)
-s      = caget(SPV+'.NPTS', npts)
+s      = ca_get(SPV+'.NPTS', npts)
+npts   = npts > 1
+
+if (npts le 2) then print, 'warning: 2 or fewer points in scan??'
+
 ;  print, ' scan: npts = ', npts
 ret    = {npts:0, p_used:p_used, d_used:d_used, $
           pa:fltarr(M_POS,npts), da:fltarr(M_DET,npts)}
@@ -455,11 +484,15 @@ ret    = {npts:0, p_used:p_used, d_used:d_used, $
 ; gather scan data
 for i = 0, M_POS-1 do begin
     d = string(i+1,format='(i1.1)') 
-    s = caget(SPV + '.P' + d + 'NV', ix)
+    s = ca_get(SPV + '.P' + d + 'NV', ix)
     if (ix eq 0) then begin
         ret.p_used(i) = 1
-        s = caget(SPV + '.P' + d + 'RA', p, max=npts)
-        for j=0, npts-1 do ret.pa[i, j] = p[j]
+        s = ca_get(SPV + '.P' + d + 'RA', p, max=npts)
+        if (s eq 0) then begin
+            for j=0, npts-1 do ret.pa[i, j] = p[j]
+        endif else begin
+            for j=0, npts-1 do ret.pa[i, j] = 0.
+        endelse
     endif
 
 endfor
@@ -468,16 +501,21 @@ for i = 0, M_DET-1 do begin
     ; if (i ge 9) then  d = string(byte(i + 56))
     ; Matt 26-Sept-2000 switch to 70 detector scan record
     d =  string(i+1,format='(i2.2)') 
-    s = caget(SPV + '.D' + d + 'NV', ix)
+    s = ca_get(SPV + '.D' + d + 'NV', ix)
     if (ix eq 0) then begin
         ret.d_used(i) = 1
-        x = caget( SPV + '.D' + d + 'DA', p, max=npts)
-        for j=0, npts-1 do ret.da[i, j] = p[j]
+        s = ca_get( SPV + '.D' + d + 'DA', p, max=npts)
+        if (s eq 0) then begin
+            for j=0, npts-1 do ret.da[i, j] = p[j]
+        endif else begin
+            for j=0, npts-1 do ret.da[i, j] = 0.
+        endelse
     endif
 endfor
 ret.npts = npts
 ; Un-Pause Scan before return
-x       = ca_put(self.prefix + 'scanPause.VAL', pause_val)
+; x       = ca_put(self.prefix + 'scanPause.VAL', pause_val)
+x       = ca_put(SPV + '.CMND', 0)
 return, ret
 end
 
@@ -485,7 +523,6 @@ function epics_scan::load_to_crate
 ;
 ; load a motor scan record to the crate
 ; 
-
 ; print, 'LOAD: current_scan ', self.current_scan,  '  dim: ', self.dimension
 
 time_est = 0.000
@@ -531,6 +568,10 @@ for is = 0, self.dimension-1 do begin
         med_set    = 0
         x = ca_put(SPV + '.T1PV', '')
         x = ca_put(SPV + '.T2PV', '')
+        x = ca_put( SPV + '.P4PV', '')
+        x = ca_put( SPV + '.P3PV', '')
+        x = ca_put( SPV + '.P2PV', '')
+
         self.scan[is].pos_names[1] = ''
         self.scan[is].pos_names[2] = ''
         self.scan[is].pos_names[3] = ''
@@ -849,7 +890,7 @@ function epics_scan::read_paramfile, use_dialog=use_dialog, file=file
                   endif else begin
                       il   = strlen(self.motors.pv[n_mot])
                       dv   = strmid(self.motors.pv[n_mot],0,il-4) + '.DESC'
-                      stat = caget(dv, tn)
+                      stat = ca_get(dv, tn)
                       if (stat eq 0) then  self.motors.name[n_mot] = tn
                   endelse
               end
@@ -866,7 +907,6 @@ ret:
   free_lun, lun
   return, retval
 bad_file:
-  print,  ' '
   print, '  Warning: scan parameter file ', s_file,  ' could not be loaded.'
   return, retval
 end
@@ -884,8 +924,11 @@ for i = 0, n_elements(self.detectors.countPV)-1 do begin
     ; det  =  string(i+1,format='(i1.1)') 
     ; if (i ge 9) then  det = string(byte(i + 56))
     ; Matt 26-Sept-2000 switch to 70 detector scan record
+
     det  =  string(i+1,format='(i2.2)') 
+    ; print , ' ', det, scan_pv
     x = caget(scan_pv + '.D' + det + 'PV', str)
+    ; print , ' ', str
     if ((x eq 0) and (str ne '')) then begin
         ds = strtrim(str,2)
         if (ds ne str) then x = ca_put(scan_pv + '.D' + det + 'PV', ds)
@@ -922,7 +965,7 @@ function epics_scan::lookup_positioners
 scan_pv = self.scan[0].scanpv
 for i = 0, n_elements(self.scan[0].drives)-1 do begin
     pos  =  string(i+1,format='(i1.1)') 
-    x = caget(scan_pv + '.P' + pos + 'PV', str)
+    x = ca_get(scan_pv + '.P' + pos + 'PV', str)
     if ((x eq 0) and (str ne '')) then begin
         self.scan[0].posPVs[i] = str
     endif
@@ -944,7 +987,7 @@ function epics_scan::lookup_motor, i
 ; and put them in the proper motor structure members
 ; returns:
 ;     0  complete success
-;    -1  some caget failed
+;    -1  some ca_get failed
 ;    -2  null motor specified
 ;    -4  motor index out of range
 if ((i le 0) or (i ge n_elements(self.motors.name))) then return, -4
@@ -959,17 +1002,17 @@ if (strupcase(strmid(pv,il-4,4)) eq '.VAL') then pv = strmid(pv,0,il-4)
 self.motors.pv[i]  = pv + '.VAL'
 self.motors.rbv[i] = pv + '.RBV'
 ; current position
-s  = caget(pv + '.RBV', x)
+s  = ca_get(pv + '.RBV', x)
 if (s ne 0 ) then return, -1
 self.motors.curpos[i] = x
 ; name (if not pre-defined)
 if (self.motors.name[i] eq '') then begin
-    s  = caget(pv + '.DESC', x)
+    s  = ca_get(pv + '.DESC', x)
     if (s ne 0 ) then return, -1
     self.motors.name[i] = x
 endif
 ; units
-s  = caget(pv + '.EGU', x)
+s  = ca_get(pv + '.EGU', x)
 if (s ne 0 ) then return, -1
 self.motors.units[i] = x
 ; limits
@@ -980,10 +1023,10 @@ if (strpos(pv,'Energy') ne -1) then begin
     self.motors.hlim[i] = 35000.00 
     self.motors.llim[i] =  4000.00 
 endif else begin
-    s  = caget(pv + '.LLM', x)
+    s  = ca_get(pv + '.LLM', x)
     if (s ne 0 ) then return, -1
     self.motors.llim[i] = x
-    s  = caget(pv + '.HLM', x)
+    s  = ca_get(pv + '.HLM', x)
     if (s ne 0 ) then return, -1
     self.motors.hlim[i] = x
 endelse
@@ -1021,7 +1064,7 @@ function epics_scan::get_motor_position, imotor
 im = 1
 if (keyword_set(imotor) ne 0) then im = imotor
 
-res = caget(self.motors.rbv[im], xx)
+res = ca_get(self.motors.rbv[im], xx)
 
 self.motors.curpos[im] = xx
 
@@ -1185,7 +1228,7 @@ function epics_scan::init, prefix=prefix, scan_file=scan_file, use_dialog=use_di
 @scan_dims
 ;
 caSetTimeout, 0.005
-caSetRetryCount, 200
+caSetRetryCount, 400
 
 if (n_elements(prefix) eq 0) then prefix='13IDC:'
 self.prefix            =  prefix
