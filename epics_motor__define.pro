@@ -141,6 +141,75 @@ end
 
 
 ;*****************************************************************************
+function epics_motor::get_offset
+;+
+; NAME:
+;       EPICS_MOTOR::GET_OFFSET
+;
+; PURPOSE:
+;       This function returns the .OFF field of the EPICS motor record. This
+;       is the offset between user and dial coordinates.
+;
+; CATEGORY:
+;       EPICS device class library.
+;
+; CALLING SEQUENCE:
+;
+;       Result = motor->GET_OFFSET()
+;
+; INPUTS:
+;       None:
+;
+; OUTPUTS:
+;       This function returns the offset of the motor.
+;
+; EXAMPLE:
+;       motor = obj_new('epics_motor', '13IDA:Slit1_Pos')
+;       print, motor->GET_OFFSET()
+;
+; MODIFICATION HISTORY:
+;       Written by:     Mark Rivers, January 7, 2002
+;-
+t = caget(self.record_name + '.OFF', offset)
+return, offset
+end
+
+
+;*****************************************************************************
+pro epics_motor::set_offset, offset
+;+
+; NAME:
+;       EPICS_MOTOR::SET_OFFSET
+;
+; PURPOSE:
+;       This function sets the .OFF field of the EPICS motor record. This
+;       is the offset between user and dial coordinates.
+;
+; CATEGORY:
+;       EPICS device class library.
+;
+; CALLING SEQUENCE:
+;
+;       motor->SET_OFFSET, offset
+;
+; INPUTS:
+;       offset:  The motor offset
+;
+; OUTPUTS:
+;       None
+;
+; EXAMPLE:
+;       motor = obj_new('epics_motor', '13IDA:Slit1_Pos')
+;       motor->SET_OFFSET, 1.5
+;
+; MODIFICATION HISTORY:
+;       Written by:     Mark Rivers, January 7, 2002
+;-
+t = caput(self.record_name + '.OFF', offset)
+end
+
+
+;*****************************************************************************
 function epics_motor::get_high_limit, dial=dial
 ;+
 ; NAME:
@@ -307,22 +376,23 @@ end
 
 
 ;*****************************************************************************
-function epics_motor::get_calibration, $
-            negative=negative, positive=positive, home=home
+function epics_motor::get_calibration, status, $
+            negative=negative, positive=positive, home=home, $
+            offset=offset
 ;+
 ; NAME:
 ;       EPICS_MOTOR::GET_CALIBRATION
 ;
 ; PURPOSE:
-;       This function returns one of three possible calibration settings
-;       for the motor.  The settings are negative limit, positive limit and
-;       home.  The returned value is in dial coordinates.
+;       This function returns one of four possible calibration settings
+;       for the motor.  The settings are negative limit, positive limit,
+;       home, and offset.  The returned value is in dial coordinates.
 ;
 ; CATEGORY:
 ;       EPICS device class library.
 ;
 ; CALLING SEQUENCE:
-;       cal = motor->GET_CALIBRATION()
+;       cal = motor->GET_CALIBRATION(Status)
 ;
 ; KEYWORD PARAMETERS:
 ;       NEGATIVE:  Set this keyword to return the calibration value at the
@@ -334,9 +404,18 @@ function epics_motor::get_calibration, $
 ;       HOME:      Set this keyword to return the calibration value at the
 ;                  home position.
 ;
+;       OFFSET:    Set this keyword to return the offset (the difference
+;                  between the user and dial coordinates)
+;
 ; OUTPUTS:
 ;       This function returns the requested calibration value in dial
 ;       coordinates.
+;
+;       Status:  0 if the calibration information was contained in the file,
+;                -1 if it was not.  For HOME and OFFSET Status=-1 is really
+;                an error, for NEGATIVE and POSITIVE it is a warning that the
+;                DHLM or DLLM values, rather than values from the file are
+;                being returned.
 ;
 ; PROCEDURE:
 ;       There are two possible sources of the calibration information.  The
@@ -347,23 +426,29 @@ function epics_motor::get_calibration, $
 ;       for example:
 ;       13IDC:m1 NEGATIVE -5.667  ; Calibrated by MLR 4/5/2000
 ;       13IDA:m2 HOME 10.500      ; Calibrated by PJE 12/7/1999
+;       13IDA:m2 OFFSET -1.5      ; Calibrated by PJE 12/7/1999
 ;
 ;       If the appropriate calibration cannot be found in this file then this
 ;       function returns the following values:
 ;       NEGATIVE motor.DLLM (Dial low limit)
 ;       POSITIVE motor.DHLM (Dial high limit)
 ;       HOME     0.0
+;       OFFSET   0.0
+;       In all of these cases the Status output will be -1.
 ;
 ; EXAMPLE:
 ;       ; Get the motor calibration value at the positive limit switch
 ;       motor = obj_new('epics_motor', '13IDA:Slit1_Pos')
-;       cal = motor->GET_CALIBRATION(/POSITIVE)
+;       cal = motor->GET_CALIBRATION(/POSITIVE, Status)
 ;
 ; MODIFICATION HISTORY:
 ;       Written by:     Mark Rivers, April 8, 2000
+;       7-JAN-2002  MLR  Added OFFSET keyword and Status output
+;                       Replaced STR_SEP with STRSPLIT
 ;-
 if keyword_set(positive) then limit='POSITIVE' $
 else if keyword_set(home) then limit='HOME' $
+else if keyword_set(offset) then limit='OFFSET' $
 else limit='NEGATIVE'
 
 file = getenv('MOTOR_CALIBRATION')
@@ -373,28 +458,34 @@ openr, lun, /get, file
 line = ''
 while not eof(lun) do begin
     readf, lun, line
-    tokens = str_sep(line, ' ', /trim)
-    if ((tokens[0] eq self.record_name) and $
-        (strupcase(tokens[1]) eq limit)) then begin
-        cal = float(tokens[2])
-        free_lun, lun
-        return, cal
+    line = strtrim(line,2)
+    if ((strlen(line) gt 1) and  $
+        (strmid(line,0,1) ne ';') ) then begin
+       tokens = strsplit(line, /extract)
+       if ((tokens[0] eq self.record_name) and $
+           (strupcase(tokens[1]) eq limit)) then begin
+           cal = float(tokens[2])
+           free_lun, lun
+           status = 0
+           return, cal
+       endif 
     endif
 endwhile
 
 nofile:
 ; Could have been an error reading the file, make sure it is closed
 if (n_elements(lun) ne 0) then free_lun, lun
+status = -1
 if (limit eq 'NEGATIVE') then return, self->get_low_limit(/DIAL)
 if (limit eq 'POSITIVE') then return, self->get_high_limit(/DIAL)
-; Must be HOME
+; Must be HOME or OFFSET
 return, 0.0
 end
 
 
 ;*****************************************************************************
 pro epics_motor::calibrate, $
-            negative=negative, positive=positive, home=home, $
+            negative=negative, positive=positive, home=home, offset=offset, $
             noconfirm=noconfirm
 ;+
 ; NAME:
@@ -412,21 +503,26 @@ pro epics_motor::calibrate, $
 ;
 ; KEYWORD PARAMETERS:
 ;       NEGATIVE:  Set this keyword to do the calibration at the negative 
-;                  limit switch.  This is the default.
+;                  limit switch.
 ;
 ;       POSITIVE:  Set this keyword to do the calibration at the positive 
 ;                  limit switch.
 ;
 ;       HOME:      Set this keyword to do the calibration at the home position.
 ;
+;       OFFSET:    Set this keyword to calibrate the motor offset
+;
 ;       NOCONFIRM: Set this keyword to suppress the confirmation dialog box
 ;                  before setting the new dial position.
+;
+;       Note that only one of (NEGATIVE, POSITIVE or HOME) can be specified, but
+;       OFFSET can be used either alone or together with any of the above.
 ;
 ; PROCEDURE:
 ;       This procedure first determines the appropriate calibration value using
 ;       <A HREF="#EPICS_MOTOR::GET_CALIBRATION">EPICS_MOTOR::GET_CALIBRATION()</A>.
 ;       It then does the following:
-;           - If the calibration is not done with /HOME
+;           - If the calibration is done with /NEGATIVE or /POSITIVE
 ;               - Saves the motor soft limit
 ;               - Saves the motor slew speed
 ;               - Changes the soft limit to a very large value, so that the 
@@ -436,13 +532,16 @@ pro epics_motor::calibrate, $
 ;               - Hits appropriate limit at slew speed/100
 ;           - If calibration is done with /HOME
 ;               - Does a motor home
-;           - Confirms if user wants to change calibration if /NOCONFIRM not 
-;             set
-;           - Puts motor in SET mode
-;           - Sets dial value to calibration 
-;           - Puts motor in USE mode
-;           - Restores slew speed
-;           - Restores soft limit
+;           - If the calibration is done with /NEGATIVE, /POSITIVE or /HOME    
+;              - Confirms if user wants to change calibration if /NOCONFIRM not 
+;                set
+;              - Puts motor in SET mode
+;              - Sets dial value to calibration 
+;              - Puts motor in USE mode
+;              - Restores slew speed
+;              - Restores soft limit
+;           - If /OFFSET is specified
+;             Sets offset to the offset calibration
 ;
 ; EXAMPLE:
 ;       ; Get the motor calibration value at the positive limit switch
@@ -451,76 +550,92 @@ pro epics_motor::calibrate, $
 ;
 ; MODIFICATION HISTORY:
 ;       Written by:     Mark Rivers, April 8, 2000
+;       7-JAN-2000  MLR   Added OFFSET keyword, changed logic so that
+;                         user value is not written to.  Changed so NEGATIVE
+;                         is no longer a default keyword.
 ;-
-cal = self->get_calibration(negative=negative, positive=positive, home=home)
-if keyword_set(positive) then limit='POSITIVE' $
-else if keyword_set(home) then limit='HOME' $
-else limit='NEGATIVE'
+limit = keyword_set(positive) or keyword_set(negative)
 
-if (limit eq 'HOME') then begin
-    self->go_home, home_direction=home_direction
-    self->wait
-endif else begin
-    huge = 1.e9/abs(self->get_scale())
-    prev_speed = self->get_slew_speed()
-    if (limit eq 'NEGATIVE') then begin
-        sign = -1.
-        prev_limit = self->get_low_limit(/dial)
-        self->set_low_limit, -2.*huge, /dial
-    endif else begin
-        sign = 1.
-        prev_limit = self->get_high_limit(/dial)
-        self->set_high_limit, 2.*huge, /dial
+if (keyword_set(home) or limit) then begin
+    cal = self->get_calibration(negative=negative, positive=positive, home=home, status)
+    if (status ne 0) then begin
+        response = dialog_message(/question, 'Calibration not in file, continue?')
+        if (strupcase(response) eq 'NO') then return
+    endif
+    if (keyword_set(home)) then begin
+        self->go_home, home_direction=home_direction
+        self->wait
+    endif else begin  ; (positive or negative)
+        huge = 1.e9/abs(self->get_scale())
+        prev_speed = self->get_slew_speed()
+        if (keyword_set(negative)) then begin
+            sign = -1.
+            prev_limit = self->get_low_limit(/dial)
+            self->set_low_limit, -2.*huge, /dial
+        endif else begin
+            sign = 1.
+            prev_limit = self->get_high_limit(/dial)
+            self->set_high_limit, 2.*huge, /dial
+        endelse
+        self->move, sign*huge, /dial, /ignore_limits
+        self->wait, /ignore_limits
+        target = self->get_position(/dial) -sign*2000./abs(self->get_scale())
+        self->move, target, /dial, /ignore_limits
+        self->wait, /ignore_limits
+        ; There is a bug in the motor record, sometimes need to move twice if we
+        ; are at a hard limit
+        self->move, target, /dial, /ignore_limits
+        self->wait, /ignore_limits
+        wait, .2
+        self->set_slew_speed, (prev_speed/100. > self->get_base_speed())
+        wait, .2
+        self->move, sign*huge, /dial, /ignore_limits
+        self->wait, /ignore_limits
     endelse
-    self->move, sign*huge, /dial, /ignore_limits
-    self->wait, /ignore_limits
-    target = self->get_position(/dial) -sign*2000./abs(self->get_scale())
-    self->move, target, /dial, /ignore_limits
-    self->wait, /ignore_limits
-    ; There is a bug in the motor record, sometimes need to move twice if we
-    ; are at a hard limit
-    self->move, target, /dial, /ignore_limits
-    self->wait, /ignore_limits
-    wait, .2
-    self->set_slew_speed, (prev_speed/100. > self->get_base_speed())
-    wait, .2
-    self->move, sign*huge, /dial, /ignore_limits
-    self->wait, /ignore_limits
-endelse
 
-; Get the current positions
-current_dial = self->get_position(/dial, /readback)
-current_user = self->get_position(/readback)
+    ; Get the current positions
+    current_dial = self->get_position(/dial, /readback)
+    current_user = self->get_position(/readback)
 
-if (not keyword_set(NOCONFIRM)) then begin
-    response = dialog_message(/question, 'Reset dial value from ' + $
-                    strtrim(current_dial,2) + ' to ' + strtrim(cal,2) + '?')
-    if (strupcase(response) eq 'NO') then goto, restore_settings
-endif else begin
-    print, self.record_name + ': reset dial value from ' + $
-            strtrim(current_dial,2) + ' to ' +  strtrim(cal,2)
-endelse
+    if (not keyword_set(NOCONFIRM)) then begin
+        response = dialog_message(/question, 'Reset dial value from ' + $
+                        strtrim(current_dial,2) + ' to ' + strtrim(cal,2) + '?')
+        if (strupcase(response) eq 'NO') then goto, restore_settings
+    endif else begin
+        print, self.record_name + ': reset dial value from ' + $
+                strtrim(current_dial,2) + ' to ' +  strtrim(cal,2)
+    endelse
 
-; Set the dial position to the calibration value
-self->set_position, cal, /dial
-; Set the user position to the previous value
-wait, 1  ; This delay is necessary until /wait works in caput again
-self->set_position, current_user
+    ; Set the dial position to the calibration value  
+    self->set_position, cal, /dial
 
-restore_settings:
-case limit of
-    'NEGATIVE': begin
+    restore_settings:
+    if (keyword_set(negative)) then begin
         self->set_slew_speed, prev_speed
         self->set_low_limit, prev_limit, /dial
-    end
-    'POSITIVE': begin
+    endif
+    if (keyword_set(positive)) then begin
         self->set_slew_speed, prev_speed
         self->set_high_limit, prev_limit, /dial
-    end
-    'HOME': begin
-    end
-endcase
+    endif
+endif
 
+if (keyword_set(offset)) then begin
+    off = self->get_calibration(/OFFSET, status)
+    if (status ne 0) then begin
+        response = dialog_message('Offset not defined', /error)
+        return
+    endif
+    if (not keyword_set(NOCONFIRM)) then begin
+        response = dialog_message(/question, 'Reset offset to' + strtrim(off,2) + '?')
+        if (strupcase(response) eq 'NO') then return
+    endif else begin
+        print, self.record_name + ': reset offset value to ' + strtrim(off,2)
+    endelse
+
+    ; Set the offset to the calibration value  
+    self->set_offset, off
+endif
 end
 
 ;*****************************************************************************
