@@ -5,6 +5,7 @@ widget_control, self.form.progress,  set_value='Scan Finished'
 ; widget_control, self.form.time_rem,  set_value = sec2hms(0.0)
 self.is_scanning = 0
 
+print, ' entered scan finished ' , self.dimension
 self->plot_data
 
 if (self.dimension eq 1) then begin
@@ -110,9 +111,8 @@ widget_control, self.form.progress, set_value = prog_str
 ; time estimate
 c  = self.cpt_total
 tm = dxtime()
-x  = (tm - self.data.start_time) * (self.npts_total - c) / (c>1)
+x  = ( (tm - self.data.start_time) * (self.npts_total - c) / (c>1) ) > 0
 ; print, 'time est: ', c, self.npts_total, tm, self.data.start_time, x
-
 widget_control, self.form.time_rem, set_value = sec2hms(x)
 
 if (self.cpt1 ge 1) then $
@@ -253,7 +253,10 @@ do_plot2 = 0
 ; print, ' plot_data ', npts
 
 if (npts gt 1) then begin
-    plot,  self.data.p1pa[0,0:npts-1], y1, ystyle=16, /nodata
+    l =  self.plot.xlab + ' [' + self.plot.xunits + ']'
+    plot,  self.data.p1pa[0,0:npts-1], y1, ystyle=17,  $
+      charsize=self.plot.charsize, title=self.datafile, $
+      xtitle = l, /nodata
     oplot, self.data.p1pa[0,0:npts-1], y1, psym=psym1, $
       color=set_color( (*self.plot.colors)[j_col] )
 
@@ -340,10 +343,9 @@ pro scanviewer::next_2d_row
 return
 end
 
-pro scanviewer::start_scan, no_header=no_header
+pro scanviewer::start_scan, no_header=no_header, get_start_time=get_start_time
 ;
 ; does 'scan1' for scan_viewer
-;
 
 write_header = 1
 if (keyword_set(no_header)) then  write_header= 0
@@ -365,12 +367,21 @@ self.cpt1  = 0
 widget_control, self.form.progress,  set_value=' Waiting ...'
 widget_control, self.form.iscan ,    set_value=  f2a(self.data.iscan)
 
+mots = self.es->get_param('motors')
+
 px  = fltarr(self.mpts1+2)
 spv = self.es->get_scan_param(0,'scanpv')
 for i = 0, 3 do begin
     x =  string(i+1,format='(i1.1)')
     s = caget(spv+'.P'+x+'PA', px)
     self.data.p1pa[i,*]  = px
+endfor
+x  = caget(spv +'.P1PV', pvn)
+for i = 0,  n_elements(mots.name)-1 do begin
+    if (strtrim(mots.pv[i],2) eq pvn) then begin
+        self.plot.xlab   = mots.name[i]
+        self.plot.xunits = mots.units[i]
+    endif
 endfor
 
                
@@ -380,6 +391,9 @@ if (self.dimension eq 2) then begin
 endif
 
 Widget_Control, self.form.usertext, get_value=titles
+
+if (keyword_set(get_start_time) ne 0) then self.data.start_time = dxtime()
+
 if (write_header) then begin
     x = self.es->start_scan1d(user_titles=titles)
 endif else begin
@@ -393,7 +407,6 @@ widget_control, self.form.start_btn, set_value='Abort Scan'
 widget_control, self.form.progress,  set_value='Scan Starting'
 widget_control, self.form.timer,     time = 0.25
     
-
 return
 end
 ;
@@ -426,13 +439,40 @@ ErrorNo = 0
 ; endif
 
 if (tag_names(event, /structure_name) eq 'WIDGET_TIMER') then begin
-    exec = self.is_scanning
-    mon = cacheckmonitor(self.monitors.exec)
-    if (mon) then begin
+    exec      = self.is_scanning
+    mon_exec  = cacheckmonitor(self.monitors.exec)
+    mon_pause = cacheckmonitor(self.monitors.pause)
+    mon_cpt   = cacheckmonitor(self.monitors.cpt)
+    if (exec) then begin
+        ; print, ' monitors: exec, pause, cpt: ', mon_exec,  mon_pause, mon_cpt
+        m  = caget(self.monitors.exec, xxe)
+        m  = caget(self.monitors.pause,xxp)
+        m  = caget(self.monitors.cpt,  xxc)
+        ; print, ' exec, pause, cpt' , xxe, xxp, xxc
+    endif
+
+    if (mon_cpt) then begin
+        s = caget(self.monitors.cpt,cpt)
+        print, 'cpt event: ', self.cpt1, ' to ', cpt
+        if (cpt gt self.cpt1) then begin
+            self.cpt1      = cpt
+            self.cpt_total = self.cpt_total + 1
+            if (self.is_scanning)  then self->update_point
+        endif
+    endif
+
+    if (self.is_scanning and self.is_scan_master and (self.cpt1  eq self.mpts1)) then begin
+        print, 'scan appears done'
+;        self.is_scanning = 0
+    endif
+
+
+    if (mon_exec) then begin
         s = caget(self.monitors.exec,exec)
-        ;print, 'exec event ', self.is_scan_master, exec
-        if (mon and self.is_scan_master) then begin
+        print, 'exec event ', self.is_scan_master, exec, self.is_scanning
+        if (mon_exec and self.is_scan_master) then begin
             if (self.is_scanning and (exec eq 0)) then begin
+                if (self.is_paused eq 1) then self->pause,force=0
                 self->scan_finished
             endif 
 ;            else begin
@@ -444,10 +484,10 @@ if (tag_names(event, /structure_name) eq 'WIDGET_TIMER') then begin
         if (exec) then  self.cpt1        = 0
     endif
 ;
-    mon = cacheckmonitor(self.monitors.pause)
-    if (mon and self.is_scan_master) then begin
+    if (mon_pause and self.is_scan_master) then begin
+        paused = self.is_paused
         s = caget(self.monitors.pause,paused)
-        ; print, 'scan pause went from ', self.is_paused, ' to ', paused
+        print, 'scan pause went from ', self.is_paused, ' to ', paused
         if (paused ne self.is_paused) then  self->pause
     endif
 ;
@@ -468,20 +508,6 @@ if (tag_names(event, /structure_name) eq 'WIDGET_TIMER') then begin
             widget_control, self.form.progress,  set_value='Scan Paused: No Beam'
         endif
     endif
-    mon = cacheckmonitor(self.monitors.cpt)
-    if (mon) then begin
-        s = caget(self.monitors.cpt,cpt)
-        ; print, 'cpt event: ', self.cpt1, ' to ', cpt
-        if (cpt gt self.cpt1) then begin
-            self.cpt1      = cpt
-            self.cpt_total = self.cpt_total + 1
-            if (self.is_scanning)  then self->update_point
-        endif
-    endif
-
-    if (self.is_scanning and self.is_scan_master and (self.cpt1  eq self.mpts1)) then begin
-        print, 'scan appears done'
-    endif
 
 
     widget_control, event.id, timer=0.10
@@ -498,7 +524,7 @@ endif else begin
     case uval of
         'exit':         Widget_Control, event.top, /destroy
         'pause_scan':   self->pause
-        'wait_lock':    self.wait_for_lock =event.select
+        ; 'wait_lock':    self.wait_for_lock =event.select
         'start_scan': begin
             self.dimension = self.es->get_param('dimension')
             ; print, ' start scan  ', self.is_scanning, self.dimension
@@ -528,10 +554,9 @@ endif else begin
                         self.data.p2pv[i]   = pvn
                     endfor
                 endif
-                self.data.start_time = dxtime()
-                self->start_scan
-                mon = cacheckmonitor(self.monitors.exec)
-                s   = caget(self.monitors.exec,exec)
+                self->start_scan, /get_start_time
+                mon_exec = cacheckmonitor(self.monitors.exec)
+                s        = caget(self.monitors.exec,exec)
             endif else begin
                 self->abort
             endelse
@@ -600,21 +625,29 @@ self.monitors.exec  = self.scanpv1 + '.EXSC'
 self.monitors.cpt   = self.scanpv1 + '.CPT'
 self.monitors.pause = prefix + 'scanPause.VAL'
 
+
+print, 'monitors: ', self.monitors.exec,  self.monitors.pause,  self.monitors.cpt
+
 tags = tag_names(self.monitors)
 u = ''
 for i = 0, n_tags(self.monitors)-1 do begin
     x = casetmonitor(self.monitors.(i))
     x = caget(self.monitors.(i), u)
+    print, ' mon ', i, ' : ' , self.monitors.(i), u
 endfor
 
 !p.background = set_color('white')
 !p.color      = set_color('black')
 
-plot_size   = 420.0
-self.plot.xsize    = plot_size
-self.plot.ysize    = plot_size * (0.65)
-self.plot.syms   = ptr_new(['Solid', '-+-', '-*-', ' + ', ' * '])
-self.plot.colors = ptr_new(['blue',   'black', 'red',      'darkgreen', $
+self.plot.charsize  = 1.5
+self.plot.xlab      = ''
+self.plot.xunits    = ''
+
+plot_size         = 850.0
+self.plot.xsize   = fix(plot_size)
+self.plot.ysize   = fix(plot_size * (0.63))
+self.plot.syms    = ptr_new(['Solid', '-+-', '-*-', ' + ', ' * '])
+self.plot.colors  = ptr_new(['blue',   'black', 'red',      'darkgreen', $
                             'magenta', 'cyan', 'goldenrod', 'purple'])
 
 self.plot.operas   = ptr_new(['   ','log','-log','derivative','-derivative'])
@@ -689,9 +722,9 @@ self.form.nscans  = CW_Field(sc,   title = ' of Total of Scans', $
                              value = strtrim(string(self.data.nscans),2), $
                              /return_events)
 
-x  = Widget_Label(m,  value = 'Wait for Beam Lock?')
-b  = Widget_Base(m,  /nonexclusive)
-self.form.wait_lock = Widget_Button(b, xsize=60, value = '  ', uvalue= 'wait_lock')
+; x  = Widget_Label(m,  value = 'Wait for Beam Lock?')
+; b  = Widget_Base(m,  /nonexclusive)
+; self.form.wait_lock = Widget_Button(b, xsize=60, value = '  ', uvalue= 'wait_lock')
 
 
 mid   = widget_base(main,/col)
@@ -704,7 +737,8 @@ self.form.datafile = Widget_Text(mt, xsize=40,ysize=1,  $
 mt    = widget_base(mid,/row)
 x     = Widget_Label(mt, xsize=60, value = 'Titles:')
 self.form.usertext = Widget_Text(mt, xsize=70,ysize=3,  $
-                                 /editable,  value="")
+                                 /editable,  value="", $
+                                 uval='usertext')
 
 ; mr    = widget_base(mid,/col)
 ; mxx   = widget_base(mr,/row)
@@ -723,7 +757,7 @@ self.form.ypos     = Widget_Label(m, xsize = 150, value = ' ')
 x   = widget_label(m,  value = 'Estimated time:')
 self.form.time_est = Widget_Label(m, value = '     0:00:00.00')
 x     = self.es->get_param('total_time')
-widget_control, self.form.time_est, xsize =  100, set_Value= sec2hms( x )
+widget_control, self.form.time_est, set_Value= sec2hms( x )
 
 m     = widget_base(main,/row,/frame)
 x     = Widget_Label(m, value = "Info:")
@@ -731,7 +765,8 @@ self.form.progress = Widget_Label(m, xsize =385, value = 'Ready To Scan')
 
 x     = Widget_Label(m, value = 'Time Remaining: ')
 self.form.time_rem = Widget_Label(m, xsize = 100, value = ' ')
-
+ut =  sec2hms(0.d0)
+widget_control, self.form.time_rem,  set_value = ut
 
 
 Widget_Control, main, /realize
@@ -767,7 +802,7 @@ data  = {data, da:da, p1pa:p1pa, p2pa:p2pa, $
          x_cur:0., y1_cur:0., y2_cur:0,  $
          nscans:1, iscan:1 , $
          start_time:0.d00, save_med:0L, $
-         p2pv:p2pv, wait2dscan:5.00 }
+         p2pv:p2pv, wait2dscan:1.00 }
 
 
 form  = {form, xpos:0L, ypos:0L, datafile:0L, $
@@ -779,7 +814,7 @@ form  = {form, xpos:0L, ypos:0L, datafile:0L, $
          time:0L, timer:0L, draw:0L, draw_id:0L}
 
 plot = {plot, det_num:i2, det_den:i2, det_op:i2, color:i2, psym:i2, $
-        xlab:'', ylab:'', title:'', mdets:0L, $
+        xlab:'', ylab:'', xunits:'', title:'', mdets:0L, $
         xsize:600, ysize:400,  charsize:1.3, npts:0, mpts:0, $
         syms:p, colors:p, operas:p, det_list:p}
 
