@@ -20,7 +20,7 @@ if (i gt 1) then begin
     endif
 endif
 
-print, 'def det   uval = ', uval, ' | mca ', mca, ' | elem ', elem
+; print, 'def det   uval = ', uval, ' | mca ', mca, ' | elem ', elem
 case uval of
     'exit':  begin
         caSetTimeout, (*p).timeout
@@ -31,9 +31,12 @@ case uval of
     'med_use_net': (*p).data.med_use_net = event.index
     'save': begin
         ; print, ' saving results: '
-        widget_control, (*p).form.med_tot, get_value = s_med_tot
+        med_tot = 0
+        if ((*p).data.use_med) then begin
+            widget_control, (*p).form.med_tot, get_value = s_med_tot
+            med_tot = a2f(s_med_tot)
+        endif
         widget_control, (*p).form.sca_tot, get_value = s_sca_tot
-        med_tot = a2f(s_med_tot)
         sca_tot = a2f(s_sca_tot)
         tot     = med_tot + sca_tot
         if (tot gt 70) then begin
@@ -83,7 +86,7 @@ case uval of
     'roi_use_all': begin
         widget_control, (*p).form.med_tot, get_value = s_med_tot
         med_tot = a2f(s_med_tot)
-        print, ' roi use all ', elem, ' currently ', med_tot , ' in use '
+        ; print, ' roi use all ', elem, ' currently ', med_tot , ' in use '
         for i = 0, MAX_MED -1 do begin
             Widget_Control, (*p).form.med_use[elem,i], get_value=t
             in_use =  (*p).data.med_use[elem, i]
@@ -99,7 +102,7 @@ case uval of
     'roi_clr_all': begin
         widget_control, (*p).form.med_tot, get_value = s_med_tot
         med_tot = a2f(s_med_tot)
-        print, ' roi clear all ', elem, ' currently ', med_tot , ' in use '
+        ; print, ' roi clear all ', elem, ' currently ', med_tot , ' in use '
         for i = 0, MAX_MED -1 do begin
             Widget_Control, (*p).form.med_use[elem,i], get_value=t
             in_use =  (*p).data.med_use[elem, i]
@@ -126,7 +129,7 @@ case uval of
         ns = fix(ns + event.select*2 - 1)
         Widget_Control, (*p).form.med_tot, set_value=string(ns)
     end
-    else: print, ' unknown event ', uval
+    else: tmp = 1 ; print, ' unknown event ', uval
 endcase
 
     
@@ -139,7 +142,7 @@ function define_detectors, p
 ;
 ; GUI for selecting detectors by ROI
 ;
-print, ' This is define_detectors v 1.0'
+; print, ' This is define_detectors v 1.0'
 N_MCAS   = 30
 MAX_SCA  = 10
 MAX_MED  = 16
@@ -178,7 +181,7 @@ form  = {det_choice:0, det_elem:lonarr(MAX_DET), $
          med_clr_all:lonarr(MAX_ROI)  }
 
 data = {med_use:lonarr(MAX_ROI, MAX_MED), sca_use:lonarr(MAX_SCA) , $
-        med_use_net:0, sca_use_net:1 , med_proto:7}
+        med_use_net:0, sca_use_net:1 , med_proto:7, use_med:0, use_sca:0}
 
 info  = {es:(*p).es, form:form, $
          det:det,    dgrp:dgrp,  data:data,   $
@@ -194,7 +197,7 @@ caSetRetryCount, 300
 
 net_choices = ['Sum' , 'Net']
 
-Widget_Control, default_font='Fixedsys' 
+; Widget_Control, default_font='Fixedsys' 
 
 ;
 ; Scalers
@@ -267,10 +270,12 @@ ns_x = 0
 nm_x = 0
 medpr  = dgrp.prefix[1]
 scapr  = dgrp.prefix[0]
+info.data.use_sca= dgrp.use_det[0]
+info.data.use_med= dgrp.use_det[1]
 
 for i = 0, MAX_DET -1 do begin
     if ( det.countPV[i] ne '') then  begin
-        if (strpos(det.countPV[i],'scaler') ge 1) then begin 
+        if (info.data.use_sca and (strpos(det.countPV[i],'scaler') ge 1)) then begin 
             for n = 0, MAX_SCA -1 do begin
                 if (det.desc[i] eq info.snames[n]) then begin
                     ns_x = ns_x + 1
@@ -278,7 +283,7 @@ for i = 0, MAX_DET -1 do begin
                     Widget_Control, info.form.sca_use[n] , set_button=1
                 endif
             endfor
-        endif else if (strpos(det.countPV[i],'mca') ge 1) then begin 
+        endif else if (info.data.use_med and (strpos(det.countPV[i],'mca') ge 1)) then begin 
             for nm = 0, MAX_MED -1 do begin
                 xdet = medpr + 'mca' + strtrim(string(nm+1),2) + '.R'
                 for nr = 0, MAX_ROI -1 do begin
@@ -294,9 +299,14 @@ for i = 0, MAX_DET -1 do begin
     endif           
 endfor
 
-widget_control, info.form.sca_tot, set_value = string(ns_x)
-widget_control, info.form.med_tot, set_value = string(nm_x)
-
+if (info.data.use_sca) then begin
+    widget_control, info.form.sca_tot, set_value = string(ns_x)
+    Widget_Control, info.form.sca_use_net, set_droplist_select=info.data.sca_use_net 
+endif
+if (info.data.use_med) then begin
+    widget_control, info.form.med_tot, set_value = string(nm_x)
+    Widget_Control, info.form.med_use_net, set_droplist_select=info.data.med_use_net 
+endif
 
 base2  = Widget_Base(main,/row)
 X      = Widget_Button(base2,  value = 'Save Changes',    uval='save')
@@ -307,8 +317,7 @@ M_COLS =  4
 M_ROWS =  (MAX_DET/M_COLS) + 1
 net_choices = ['Sum' , 'Net']
 
-Widget_Control, info.form.sca_use_net, set_droplist_select=info.data.sca_use_net 
-Widget_Control, info.form.med_use_net, set_droplist_select=info.data.med_use_net 
+
 
 i = -1
 
