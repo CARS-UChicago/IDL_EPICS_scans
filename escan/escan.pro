@@ -1,4 +1,3 @@
-
 function update_scan_settings, w, sc, i
 ;  update the start, stop, step, npts settings for a scan segments
 ; 
@@ -61,7 +60,6 @@ pro exafs_event, event
 Widget_Control, event.id,  get_uval = uval
 ; print, ' exafs_event: scan = <',_scan,'>  uval = ', uval
 wid     = (*p).escan
-
 case uval of
     'e0': begin
         Widget_Control, wid.e0, get_value = t
@@ -493,17 +491,7 @@ case uval of
         t =  strtrim(t[0],2)
         x = (*p).es->set_param('datafile',t)
     end
-    'raw_dets':  begin
-        r  = define_raw_detectors(p)
-        d  = (*p).es->get_param('detectors')
-        t  = ['','']
-        for i = 0,  n_elements(d.countPV)- 1 do  begin
-            if (strpos(d.countPV[i],'scaler') ne -1) then t[0]= 'scaler1.CNT'
-            if (strpos(d.countPV[i],'med')    ne -1) then t[1]= 'med:Start.VAL'
-        endfor
-        x   = (*p).es->set_param('triggers',t)
-    end
-    'set_dets':  begin
+    'define_dets':  begin
         r  = define_detectors(p)
         d  = (*p).es->get_param('detectors')
         t  = ['','']
@@ -546,7 +534,6 @@ case uval of
         endfor
     end
     'scan_dim': begin
-        ; print, " SCAN_DIM  event: ", event.index + 1
         u   = (*p).es->set_param('dimension', event.index+1)
     end
     'scan_num': begin
@@ -603,9 +590,9 @@ case uval of
         widget_control, (*p).form.time_est, set_value = tm1
         x  = (*p).es->set_param('total_time',total_time)
     end
-    'scan_view': begin
-        x = scan_viewer( (*p).es )
-    end
+;    'scan_view': begin
+;     scan_viewer, (*p).es 
+;    end
     else: print , ' unknown event ', uval
 endcase
 return
@@ -634,8 +621,12 @@ es       = obj_new('epics_scan', scan_file = s_file, /use_dialog)
 datafile = es->get_param('datafile')
 motor    = es->get_param('motors')
 det      = es->get_param('detectors')
-cur_scan = es->get_param('current_scan')
+
+; cur_scan = es->get_param('current_scan')
+cur_scan = 1
+
 sc       = es->get_param('scan' + string(strtrim(cur_scan, 2)))
+cur_dim  = es->get_param('dimension')
 
 cur_scan = cur_scan - 1
 m_names  = motor.name
@@ -650,7 +641,6 @@ cur_type = 0
 cx_type  = es->get_scan_param(0, 'type')
 if (cx_type eq scan_types[1]) then cur_type = 1
 ; print, '  scan type: ', cx_type , ' scan_types[1] = ', scan_types[1], cur_type
-
 
 ;--------------------------------------------------------------------------------
 ; nbframe holds the frame ids for the 2 'notebook frames'
@@ -680,10 +670,9 @@ x      = Widget_Button(menu, value= 'Exit',                uval= 'exit', /sep)
 
 menu   = Widget_Button(mbar, value= 'Setup')
 x      = Widget_Button(menu, value= 'General Setup ...',    uval= 'setup')
-x      = Widget_Button(menu, value= 'Select Detectors ...', uval= 'set_dets') 
+x      = Widget_Button(menu, value= 'Select Detectors ...', uval= 'define_dets') 
 x      = Widget_Button(menu, value= 'Define Motors ...',    uval= 'define_mots') 
 x      = Widget_Button(menu, value= 'Collect Offsets ...',  uval= 'collect_offs') 
-; x      = Widget_Button(menu, value= 'Set Raw Detectors ...',uval= 'raw_dets') 
 
 menu   = Widget_Button(mbar, value= 'Help', /menu, /help)
 x      = Widget_Button(menu, value= 'Help on EPICS SCAN',  uval= 'escan_help')
@@ -700,8 +689,9 @@ info.form.scan_dim = Widget_Droplist(fr0, value= scan_dims,  uval= 'scan_dim', $
 info.form.scan_type= Widget_Droplist(fr0, value= scan_types, uval= 'scan_type', $
                                      title = ' Type ')
 
-Widget_Control, info.form.scan_num,  set_Droplist_SELECT = cur_scan
-Widget_Control, info.form.scan_dim,  set_Droplist_SELECT = cur_dim
+
+Widget_Control, info.form.scan_num,  set_Droplist_SELECT = 0
+Widget_Control, info.form.scan_dim,  set_Droplist_SELECT = cur_dim-1
 Widget_Control, info.form.scan_type, set_Droplist_SELECT = cur_type
 
 
@@ -712,6 +702,8 @@ x_npts  = info.es->get_scan_param(0, 'npts')
 x_time  = info.es->get_scan_param(0, 'time')
 
 info.escan.nregs = info.es->get_scan_param(0, 'n_regions')
+
+
 
 ;
 OptBase =  Widget_Base(mframe, /frame)
@@ -876,11 +868,18 @@ u = set_sensitive_regions(info.escan,sc.n_regions)
 base1  = Widget_Base(mframe, /col, /frame)
 base2  = Widget_Base(base1,/row)
 X      = Widget_Button(base2,  value = 'Load Scan',  uval='load')
-X      = Widget_Button(base2,  value = 'Scan Viewer', uval='scan_view')
+; X      = Widget_Button(base2,  value = 'Scan Viewer', uval='scan_view')
 X      = Widget_Button(base2,  value = 'EXIT ',      uval='exit')
 
 X      = Widget_Label(base2,  value = 'Estimated time:')
 info.form.time_est = Widget_Label(base2,  xsize=190,value = '            ')
+
+sv = obj_new('scanviewer',escan=es)
+
+for i = 0, 2 do begin
+    sc          = update_scan_settings(info.escan, sc, i)
+endfor
+
 
 ; render widgets, load info structure into main
 p_info = ptr_new(info,/no_copy)
