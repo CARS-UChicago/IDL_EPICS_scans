@@ -1,0 +1,17 @@
+;XYZ Stage Definition File
+motor_x: 13IDC:m13
+motor_y: 13IDC:m14
+motor_z: 13IDC:m15
+sign_x:         1
+sign_y:         1
+sign_z:         1
+verify_move:        1
+verify_erase:        0
+verify_overwrite:        1
+steps:  0.001 0.002 0.005 0.010 0.020 0.050 0.100 0.200 0.500 1.000
+point: Original Position
+             73.7190     -72.7710      11.7840
+point: fe foil
+             70.0000      285.100      13.4000
+point: phosphor
+             64.4000      258.000      16.8200

@@ -1,0 +1,15 @@
+;XYZ Stage Definition File
+motor_x: 13IDC:m13
+motor_y: 13IDC:m14
+motor_z: 13IDC:m15
+sign_x:         1
+sign_y:         1
+sign_z:         1
+verify_move:        1
+verify_erase:        1
+verify_overwrite:        1
+steps:  0.001 0.002 0.005 0.010 0.020 0.050 0.100 0.200 0.500 1.000
+point: Original Position
+             68.5990      288.233      26.3360
+point: a
+             68.5990      288.233      26.3360
