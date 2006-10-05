@@ -1,82 +1,164 @@
-pro epics_sscan_display::rebin, image, x_dist, y_dist
-    ; This function is called to rebin a 2-D array, either shrinking or expanding it
-    ; by the selected "zoom" factor
-    widget_control, self.widgets.zoom, get_value=zoom, get_uvalue=all_zooms
-    zoom = all_zooms[zoom]
-    if (zoom eq 1) then return
-    image = reform(image)
-    ncols = n_elements(image[*,0])
-    nrows = n_elements(image[0,*])
-    if (zoom gt 1) then begin
-        last_col = ncols - 1
-        last_row = nrows - 1
-        ncols = ncols * fix(zoom)
-        nrows = nrows * fix(zoom)
-    endif
-    if (zoom lt -1) then begin
-        izoom = fix(abs(zoom))
-        last_col = (ncols/izoom)*izoom - 1
-        last_row = (nrows/izoom)*izoom - 1
-        ncols = ncols / izoom
-        nrows = nrows / izoom
-    endif
-    image = rebin(image[0:last_col, 0:last_row], ncols, nrows)
-    x_dist = rebin(x_dist[0:last_col], ncols)
-    y_dist = rebin(y_dist[0:last_row], nrows)
+pro epics_sscan_display::read_scan_file, file
+   widget_control, /hourglass
+   ptr_free, self.pscan
+   widget_control, self.widgets.status, set_value='Reading scan file ...'
+   scan = read_mda(file)
+   self.pscan = ptr_new(scan, /no_copy)
+   fileHeader = *self.pscan->getFileHeader()
+   widget_control, self.widgets.filename, set_value=fileHeader.fileName
+   widget_control, self.widgets.version, set_value=fileHeader.version
+   widget_control, self.widgets.dimensions, $
+                   set_value=*self.pscan->formatDimensions(*fileHeader.pDims)
 
+   ; Construct the widgets for the scans
+   widget_control, self.widgets.status, set_value='Updating widgets ...'
+   widget_control, /hourglass
+   valid = widget_info(self.widgets.scan_base_top, /valid)
+   if (valid) then begin
+       g = widget_info(self.widgets.scan_base_top, /geometry)
+       xoffset = g.xoffset
+       yoffset = g.yoffset
+       widget_control, self.widgets.scan_base_top, /destroy
+   endif else begin
+       xoffset = 0
+       yoffset = 0
+   endelse
+   self.widgets.scan_base_top = widget_base(column=1, xoffset=xoffset, yoffset=yoffset, $
+                                   title='EPICS sscan Scans')
+   widget_control, self.widgets.scan_base_top, set_uvalue=self
+   self.widgets.scan_base = widget_tab(self.widgets.scan_base_top)
+   for i=0, fileHeader.rank-1 do begin
+       sh = (*fileHeader.pScanHeader)[i]
+       col = widget_base(self.widgets.scan_base, /column, $
+                         title=sh.name, frame=0)
+       row = widget_base(col, /row, /align_center)
+       self.widgets.scans[i].display = widget_button(row, value='Display with iTools', font=self.fonts.heading2)
+       row = widget_base(col, /row)
+       t = widget_label(row, value='# Points: ' + strtrim(sh.npts,2))
+       self.widgets.scans[i].base = col
+       stab = widget_tab(col)
+       col = widget_base(stab, /column, title='Positioners', frame=0)
+       if (sh.numPositioners gt 0) then begin
+           row = widget_base(col, /row)
+           select_widget = widget_label(row, value='Select', /align_center)
+           name_widget = widget_label(row, value='Name', /align_center)
+           units_widget = widget_label(row, value='Units', /align_center)
+           description_widget = widget_label(row, value='Description', /align_center)
+
+           for j=0, sh.numPositioners-1 do begin
+               row = widget_base(col, /row)
+               p = (*sh.pPositioners)[j]
+               button_base = widget_base(row, /nonexclusive)
+               self.widgets.scans[i].positioners[j].select = widget_button(button_base, value='')
+               self.widgets.scans[i].positioners[j].name = widget_text(row, xsize=20, value=p.name)
+               self.widgets.scans[i].positioners[j].units = widget_text(row, xsize=6, value=p.units)
+               self.widgets.scans[i].positioners[j].description = widget_text(row, xsize=30, $
+                                                    value=p.description)
+           endfor
+           ; Make the label widgets the size as the text widgets
+           g = widget_info(button_base, /geometry)
+           widget_control, select_widget, xsize=g.scr_xsize
+           g = widget_info(self.widgets.scans[i].positioners[0].name, /geometry)
+           widget_control, name_widget, xsize=g.scr_xsize
+           g = widget_info(self.widgets.scans[i].positioners[0].units, /geometry)
+           widget_control, units_widget, xsize=g.scr_xsize
+           g = widget_info(self.widgets.scans[i].positioners[0].description, /geometry)
+           widget_control, description_widget, xsize=g.scr_xsize
+           ; Make the first positioner the default
+           widget_control, self.widgets.scans[i].positioners[0].select, set_button=1
+       endif
+
+       col = widget_base(stab, /column, title='Detectors', frame=0)
+       if (sh.numDetectors gt 0) then begin
+           row = widget_base(col, /row, /align_center)
+           t = widget_label(row, value='Detectors', $
+                            font=self.fonts.heading2)
+
+           MAX_DETECTORS_PER_TAB = 10
+           det_base = widget_tab(col)
+           for j=0, sh.numDetectors-1 do begin
+               if (j mod MAX_DETECTORS_PER_TAB eq 0) then begin
+                   tab = widget_base(det_base, /column, frame=0, $
+                                     title='Det. '+ strtrim(j+1,2) + '-' + $
+                                                    strtrim(j+MAX_DETECTORS_PER_TAB,2))
+                   row = widget_base(tab, /row)
+                   select_widget = widget_label(row, value='Select', /align_center)
+                   name_widget = widget_label(row, value='Name', /align_center)
+                   units_widget = widget_label(row, value='Units', /align_center)
+                   description_widget = widget_label(row, value='Description', /align_center)
+               endif
+               row = widget_base(tab, /row)
+               d = (*sh.pDetectors)[j]
+               button_base = widget_base(row, /nonexclusive, frame=0)
+               self.widgets.scans[i].detectors[j].select = widget_button(button_base, value='')
+               self.widgets.scans[i].detectors[j].name = widget_text(row,  xsize=20, value=d.name)
+               self.widgets.scans[i].detectors[j].units = widget_text(row, xsize=6, value=d.units)
+               self.widgets.scans[i].detectors[j].description = widget_text(row, xsize=30, value=d.description)
+               if (j mod MAX_DETECTORS_PER_TAB eq 0) then begin
+                   ; Make the label widgets the size as the text widgets
+                   g = widget_info(button_base, /geometry)
+                   widget_control, select_widget, xsize=g.scr_xsize
+                   g = widget_info(self.widgets.scans[i].detectors[0].name, /geometry)
+                   widget_control, name_widget, xsize=g.scr_xsize
+                   g = widget_info(self.widgets.scans[i].detectors[0].units, /geometry)
+                   widget_control, units_widget, xsize=g.scr_xsize
+                   g = widget_info(self.widgets.scans[i].detectors[0].description, /geometry)
+                   widget_control, description_widget, xsize=g.scr_xsize
+               endif
+           endfor
+           ; Make the first positioner the default
+           widget_control, self.widgets.scans[i].detectors[0].select, set_button=1
+           data = *d.pData
+           dims = size(data, /dimensions)
+           self.scan_settings[i].dimensions = dims
+           self.scan_settings[i].rank = n_elements(dims)
+           self.scan_settings[i].dimensions_string = *self.pscan->formatDimensions(dims)
+           row = widget_base(col, /row)
+           t = widget_label(row, value='Dimensions: ' + self.scan_settings[i].dimensions_string)
+           row = widget_base(col, /row)
+           self.widgets.scans[i].select_all_detectors = widget_button(row, value='Select all')
+           self.widgets.scans[i].deselect_all_detectors = widget_button(row, value='Deselect all')
+
+           col = widget_base(stab, /column, title='Display range', frame=0)
+           row = widget_base(col, /row)
+           t = widget_label(row, value='Dimensions: ' + self.scan_settings[i].dimensions_string)
+           for j=0, n_elements(dims)-1 do begin
+               row = widget_base(col, /row, /base_align_center)
+               t = widget_label(row, value='Dimension ' + strtrim(j+1,2) + ':')
+               self.widgets.scans[i].dims[j].start = cw_field(row, /row, xsize=6, /long, $
+                                                          title='Start', $
+                                                          value=1)
+               self.widgets.scans[i].dims[j].stop = cw_field(row, /row, xsize=6, /long, $
+                                                          title='Stop', $
+                                                          value=dims[j])
+               self.widgets.scans[i].dims[j].total = cw_bgroup(row, ['No', 'Yes'], $
+                                            label_left='Total:', row=1, $
+                                            set_value=0, /exclusive)
+
+           endfor
+       endif else begin
+       ; No detectors, can't display
+       widget_control, self.widgets.scans[i].display, sensitive=0
+       endelse
+
+       ; Select the detector tab
+       widget_control, stab, set_tab_current=1
+   endfor
+
+   ; Select the inner most scan as the default, since it is most interesting
+   widget_control, self.widgets.scan_base, set_tab_current=fileheader.rank-1
+   widget_control, self.widgets.scan_base_top, /realize
+   xmanager, 'epics_sscan_display', self.widgets.scan_base_top, /no_block
+   widget_control, self.widgets.status, set_value='Read file complete ...'
 end
 
 
 pro epics_sscan_display::free_memory
     ptr_free, self.pscan
-    widget_control, self.widgets.volume_file, set_value=''
+    widget_control, self.widgets.filename, set_value=''
 end
 
 
-pro tomo_options_event, event
-    widget_control, event.top, get_uvalue=epics_sscan_display
-    epics_sscan_display->options_event, event
-end
-
-pro epics_sscan_display::options_event, event
-    if (tag_names(event, /structure_name) eq 'WIDGET_KILL_REQUEST') then begin
-        widget_control, self.widgets.options_base, map=0
-        return
-    endif
-    case event.id of
-        self.widgets.backproject: begin
-            sens = event.value
-            widget_control, self.widgets.backproject_base, sensitive=sens
-            widget_control, self.widgets.gridrec_base, sensitive=1-sens
-        end
-        self.widgets.remove_rings: begin
-            ; Nothing to do
-        end
-        self.widgets.white_average: begin
-            ; Nothing to do
-        end
-        self.widgets.fluorescence: begin
-            ; Nothing to do
-        end
-        self.widgets.display_sinogram: begin
-            ; Nothing to do
-        end
-        self.widgets.plot_cog: begin
-            ; Nothing to do
-        end
-        self.widgets.backproject_filter: begin
-            ; Nothing to do
-        end
-        self.widgets.backproject_interpolation: begin
-            ; Nothing to do
-        end
-        self.widgets.gridrec_resize: begin
-            ; Nothing to do
-        end
-        else:  t = dialog_message('Unknown event')
-    endcase
-end
-
 pro tomo_abort_event, event
     ; This procedure is called when an abort event is received.
     widget_control, event.id, set_uvalue=1
@@ -88,64 +170,76 @@ pro epics_sscan_display_event, event
     epics_sscan_display->event, event
 end
 
-pro epics_sscan_display::display_slice, new_window=new_window
-    if (ptr_valid(self.pvolume)) then begin
-        widget_control, self.widgets.disp_slice, get_value=slice
-        widget_control, self.widgets.display_min, get_value=min
-        widget_control, self.widgets.display_max, get_value=max
-        widget_control, self.widgets.direction, get_value=direction
-        widget_control, self.widgets.volume_file, get_value=file
-        ; Set the axis dimensions
-        if (self.setup.image_type eq 'RECONSTRUCTED') then begin
-            xdist = findgen(self.nx)*self.setup.x_pixel_size
-            ydist = findgen(self.ny)*self.setup.x_pixel_size
-            zdist = findgen(self.nz)*self.setup.y_pixel_size
-        endif else begin
-            xdist = findgen(self.nx)*self.setup.x_pixel_size
-            ydist = findgen(self.ny)*self.setup.y_pixel_size
-            zdist = *self.setup.angles
-        endelse
-        case direction of
-            0: begin
-                slice = (slice > 0) < (self.nx-1)
-                r = (*(self.pvolume))[slice, *, *]
-                xdist = ydist
-                ydist = zdist
-                end
-            1: begin
-                slice = (slice > 0) < (self.ny-1)
-                r = (*(self.pvolume))[*, slice, *]
-                ydist = zdist
-                end
-            2: begin
-                slice = (slice > 0) < (self.nz-1)
-                r = (*(self.pvolume))[*, *, slice]
-                end
-        endcase
-        axes = ['X', 'Y', 'Z']
-        widget_control, self.widgets.rotation_center, get_value=center
-        title = file + '    Center='+strtrim(string(center),2) + $
-                    '     '+axes[direction]+'='+strtrim(string(slice),2)
-        widget_control, self.widgets.auto_intensity, get_value=auto
-        if (auto) then begin
-            min=min(r, max=max)
-        endif else begin
-            widget_control, self.widgets.display_min, get_value=min
-            widget_control, self.widgets.display_max, get_value=max
-        endelse
-        ; Change the size of the image before calling image_display
-        self->rebin, r, xdist, ydist
-        if (keyword_set(new_window)) or (obj_valid(self.image_display) eq 0) then begin
-            self.image_display = obj_new('image_display', r, min=min, max=max, $
-                                          title=title, xdist=xdist, ydist=ydist)
-        endif else begin
-            self.image_display->scale_image, r, min=min, max=max, $
-                                          title=title, xdist=xdist, ydist=ydist, /leave_mouse
-        endelse
 
+pro epics_sscan_display::display_scan, scan=scan
+    if (not obj_valid(*self.pscan)) then return
+    widget_control, /hourglass
+    fileHeader = *self.pscan->getFileHeader()
+    if (n_elements(scan) eq 0) then scan=fileHeader.rank-1
+    ; Look for selected positioner to display
+    i=scan
+    sh = (*fileHeader.pScanHeader)[i]
+    positioner = 0
+    for j=0, sh.numPositioners-1 do begin
+        selected = widget_info(self.widgets.scans[i].positioners[j].select, /button_set)
+        if (selected) then begin
+            positioner = j
+            break
+        endif
+    endfor
+    for j=0, sh.numDetectors-1 do begin
+        selected = widget_info(self.widgets.scans[i].detectors[j].select, /button_set)
+        if (selected) then begin
+            if (n_elements(detector) eq 0) then detector = j else detector = [detector, j]
+        endif
+    endfor
+
+    range = lonarr(4,2)
+    total = lonarr(4)
+    for j=0, self.scan_settings[i].rank-1 do begin
+        widget_control, self.widgets.scans[i].dims[j].start, get_value=start
+        start = (start-1) > 0 < (self.scan_settings[i].dimensions[j]-1)
+        widget_control, self.widgets.scans[i].dims[j].stop, get_value=stop
+        stop = (stop-1) > start < (self.scan_settings[i].dimensions[j]-1)
+        range[j,0] = start
+        range[j,1] = stop
+        widget_control, self.widgets.scans[i].dims[j].total, get_value=tot
+        total[j] = tot
+    endfor
+
+    widget_control, self.widgets.grid, get_value=grid
+    widget_control, self.widgets.new_window, get_value=view_next
+    widget_control, self.widgets.display2D, get_value=display2D
+    image = display2D eq 0
+    surface = display2D eq 1
+    contour = display2D eq 2
+
+    if (view_next) then begin
+        *self.pscan->display, scan=scan+1, positioner=positioner+1, detector=detector+1, grid=grid, $
+                              view_next=view_next, $
+                              image=image, surface=surface, contour=contour, $
+                              xrange = range[0,*], yrange=range[1,*], zrange=range[2,*], $
+                              xtotal = total[0], ytotal=total[1], ztotal=total[2]
     endif else begin
-        t = dialog_message('Must read in volume file first.', /error)
+        *self.pscan->display, scan=scan+1, positioner=positioner+1, detector=detector+1, grid=grid, $
+                              image=image, surface=surface, contour=contour, $
+                              xrange = range[0,*], yrange=range[1,*], zrange=range[2,*], $
+                              xtotal = total[0], ytotal=total[1], ztotal=total[2]
     endelse
+end
+
+pro epics_sscan_display::ascii_output
+    if (not obj_valid(*self.pscan)) then return
+    widget_control, /hourglass
+    widget_control, self.widgets.ascii_options, get_value=options
+    positioners = options[0]
+    detectors =   options[1]
+    extrapvs =    options[2]
+    file =        options[3]
+    display =     options[4]
+    if (file) then filename = dialog_pickfile(/write)
+    *self.pscan->print, positioners=positioners, detectors=detectors, $
+                        extrapvs=extrapvs, display=display, output=filename
 end
 
 
@@ -160,56 +254,24 @@ pro epics_sscan_display::event, event
             f = dialog_pickfile(/directory, get_path=p)
             if (p ne "") then begin
                 cd, p
-                self->set_directory
             endif
         end
 
         self.widgets.read_scan_file: begin
             file = dialog_pickfile(filter='*.mda', get_path=path)
             if (file eq '') then break
-            pos = strpos(file, path)
-            if (pos ge 0) then begin
+                pos = strpos(file, path)
+                if (pos ge 0) then begin
                 pos = pos + strlen(path)
                 file = strmid(file, pos)
             endif
             cd, path
-            ptr_free, self.pscan
-            widget_control, /hourglass
-            widget_control, self.widgets.status, $
-                            set_value='Reading scan file ...'
-            scan = read_mda(file)
-            self.pscan = ptr_new(scan, /no_copy)
-            *self.pscan->display
-            dims = size(*self.pvolume, /dimensions)
-            ; Set the volume filename and path
-            widget_control, self.widgets.volume_file, set_value=file
-            widget_control, self.widgets.directory, set_value=path
-            ; Set the array dimensions
-            widget_control, self.widgets.nx, set_value=dims[0]
-            self.nx = dims[0]
-            widget_control, self.widgets.ny, set_value=dims[1]
-            self.ny = dims[1]
-            widget_control, self.widgets.nz, set_value=dims[2]
-            self.nz = dims[2]
-            ; Set the intensity range
-            min = min(*self.pvolume, max=max)
-            widget_control, self.widgets.display_min, set_value=min
-            widget_control, self.widgets.display_max, set_value=max
-            ; Set the slice display range
-            self->set_limits
-            ; Build the angle array if it does not exist
-            if (not ptr_valid(self.setup.angles)) then begin
-                ; Assume evenly spaced angles 0 to 180-angle_step degrees
-                self.setup.angles = ptr_new(findgen(self.nz)/(self.nz) * 180.)
-            endif
-            ; Set the pixel sizes to 1 if they are zero
-            if (self.setup.x_pixel_size eq 0.) then self.setup.x_pixel_size=1.0
-            if (self.setup.y_pixel_size eq 0.) then self.setup.y_pixel_size=1.0
-            if (self.setup.z_pixel_size eq 0.) then self.setup.z_pixel_size=1.0
-            widget_control, self.widgets.status, $
-                            set_value='Done reading volume file ' + file
+            self->read_scan_file, file
         end
 
+        self.widgets.ascii_output: begin
+            self->ascii_output
+        end
 
         self.widgets.free_memory: begin
             self->free_memory
@@ -221,95 +283,36 @@ pro epics_sscan_display::event, event
             return
         end
 
-        self.widgets.processing_options: begin
-            widget_control, self.widgets.options_base, map=1
+        else: begin
+            ; Other widgets either don't generate events we care about or are handled
+            ; in the loops below
         end
-
-        self.widgets.base_file: begin
-            widget_control, self.widgets.base_file, get_value=base_file
-            self->set_base_file, base_file[0]
-        end
-
-
-        self.widgets.direction: begin
-            self->set_limits
-        end
-
-        self.widgets.order: begin
-            widget_control, self.widgets.order, get_value=order
-            !order=order
-        end
-
-        self.widgets.auto_intensity: begin
-            ; Nothing to do
-        end
-
-        self.widgets.disp_slice: begin
-            widget_control, self.widgets.disp_slider, set_value=event.value
-            self->display_slice
-        end
-
-        self.widgets.disp_slider: begin
-            widget_control, self.widgets.disp_slice, set_value=event.value
-            self->display_slice
-        end
-
-        self.widgets.display_slice: begin
-            self->display_slice, /new_window
-        end
-
-        self.widgets.volume_render: begin
-            self->volume_render
-        end
-
-        self.widgets.movie_output: begin
-            ; Nothing to do
-        end
-
-        self.widgets.zoom: begin
-            ; Nothing to do
-        end
-
-        self.widgets.make_movie: begin
-            widget_control, self.widgets.disp_slice, get_value=slice
-            if (ptr_valid(self.pvolume)) then begin
-                widget_control, self.widgets.movie_output, get_value=output
-                widget_control, self.widgets.display_min, get_value=min
-                widget_control, self.widgets.display_max, get_value=max
-                widget_control, self.widgets.direction, get_value=direction
-                widget_control, self.widgets.movie_file, get_value=file
-                widget_control, self.widgets.zoom, get_value=zoom, get_uvalue=all_zooms
-                widget_control, self.widgets.first_slice, get_value=start
-                widget_control, self.widgets.last_slice, get_value=stop
-                widget_control, self.widgets.slice_step, get_value=step
-                scale = all_zooms[zoom]
-                label=0
-                case output of
-                    0: label=1
-                    1: widget_control, self.widgets.movie_file, $
-                                       get_value=jpeg_file
-                    2: widget_control, self.widgets.movie_file, $
-                                       get_value=mpeg_file
-                    3: widget_control, self.widgets.movie_file, $
-                                       get_value=tiff_file
-                endcase
-                widget_control, self.widgets.abort, set_uvalue=0
-                widget_control, self.widgets.status, set_value=""
-                make_movie, index=direction+1, scale=scale, *self.pvolume, $
-                            jpeg_file=jpeg_file, tiff_file=tiff_file, mpeg_file=mpeg_file, $
-                            min=min, max=max, start=start, stop=stop, step=step, $
-                            label=label, abort_widget=self.widgets.abort, $
-                            status_widget=self.widgets.status
-            endif else begin
-                t = dialog_message('Must read in volume file first.', /error)
-            endelse
-        end
-
-        else:  t = dialog_message('Unknown event')
     endcase
 
-    ; If there is a valid volume array make the visualize base sensitive
-    sensitive = ptr_valid(self.pvolume)
+    ; Loop through the scan widgets and see if they have generated an event
+    if (ptr_valid(self.pscan)) then if (obj_valid(*self.pscan)) then begin
+        fileHeader = *self.pscan->getFileHeader()
+        for i=0, fileHeader.rank-1 do begin
+            sh = (*fileHeader.pScanHeader)[i]
+            if (event.id eq self.widgets.scans[i].select_all_detectors) then begin
+                for j=0, sh.numDetectors-1 do  begin
+                    widget_control, self.widgets.scans[i].detectors[j].select, set_button=1
+                endfor
+            endif
+            if (event.id eq self.widgets.scans[i].deselect_all_detectors) then begin
+                for j=0, sh.numDetectors-1 do  begin
+                    widget_control, self.widgets.scans[i].detectors[j].select, set_button=0
+                endfor
+            endif
+            if (event.id eq self.widgets.scans[i].display) then self->display_scan, scan=i
+        endfor
+    endif
+
+
+    ; If there is a valid scan object make certain widgets sensitive
+    sensitive = ptr_valid(self.pscan)
+    widget_control, self.widgets.ascii_output, sensitive=sensitive
+    widget_control, self.widgets.free_memory, sensitive=sensitive
     widget_control, self.widgets.visualize_base, sensitive=sensitive
 
 end
@@ -337,12 +340,7 @@ function epics_sscan_display::init
 ; EXAMPLE:
 ;       IDL> obj = OBJ_NEW('epics_sscan_display')
 ;
-; MODIFICATION HISTORY:
-;       Written by:     Mark Rivers (16-Nov-2001)
-;       June 4, 2002    MLR  Made the display slice entry and slider display an
-;                            image in an existing window if it exists.
-;       Jan. 9, 2004    MLR  Added TIFF output for make_movie
-;
+
 ;-
 
     self.fonts.normal = get_font_name(/helvetica)
@@ -353,22 +351,25 @@ function epics_sscan_display::init
                                    title='EPICS sscan Display', mbar=mbar)
 
     file = widget_button(mbar, /menu, value = 'File')
+    self.widgets.change_directory = widget_button(file, $
+                                            value = 'Change directory ...')
     self.widgets.read_scan_file = widget_button(file, $
                                             value = 'Read MDA file ...')
+    self.widgets.ascii_output = widget_button(file, value='ASCII output...')
     self.widgets.free_memory = widget_button(file, value='Free sscan')
     self.widgets.exit = widget_button(file, $
                                             value = 'Exit')
     options = widget_button(mbar, /menu, value = 'Options')
-    row0 = widget_base(self.widgets.base, /row, /frame)
-    col0 = widget_base(row0, /column, /frame)
+    row0 = widget_base(self.widgets.base, /row)
+    col0 = widget_base(row0, /column)
     col = widget_base(col0, /column, /frame)
     self.widgets.scan_file_base = col
     t = widget_label(col, value='File/Status', font=self.fonts.heading1)
     self.widgets.filename = cw_field(col, title="File name:", $
                                         xsize=50, /return_events)
-    self.widgets.version = cw_field(col, title="Working directory:", $
+    self.widgets.version = cw_field(col, title="MDA version:", $
                                         xsize=50, /noedit)
-    self.widgets.dimensions = cw_field(col, title="Volume file name:", $
+    self.widgets.dimensions = cw_field(col, title="Scan dimensions:", $
                                         xsize=50, /noedit)
     row = widget_base(col, /row)
     self.widgets.status = cw_field(row, title="Status:", $
@@ -378,94 +379,42 @@ function epics_sscan_display::init
                                        event_pro='tomo_abort_event')
 
 
-    ; Scans
-    col = widget_base(col0, /column, /frame)
-    self.widgets.scan_base = col
     ; Visualization
-    col = widget_base(row0, /column, /frame)
+    col = widget_base(col0, /column, /frame)
     self.widgets.visualize_base = col
-    widget_control, col, sensitive=0
-    t = widget_label(col, value='Visualize', font=self.fonts.heading1)
+    t = widget_label(col, value='Display Options', font=self.fonts.heading1)
 
     row = widget_base(col, /row)
-    t = widget_label(row, value='Volume array:')
-    self.widgets.nx = cw_field(row, title='NX', /integer, /noedit, /column, $
-                               xsize=8, value=0)
-    self.widgets.ny = cw_field(row, title='NY', /integer, /noedit, /column, $
-                               xsize=8, value=0)
-    self.widgets.nz = cw_field(row, title='NZ', /integer, /noedit, /column, $
-                               xsize=8, value=0)
-    self.widgets.volume_type = cw_field(row, title='Type', /noedit, /column, $
-                               xsize=18, value='')
-
-    row = widget_base(col, /row, /base_align_center)
-    t = widget_label(row, value='Intensity range:')
-    self.widgets.display_min = cw_field(row, title='Min.', /float, $
-                                        /column, xsize=10, value=0)
-    self.widgets.display_max = cw_field(row, title='Max.', /float, $
-                                        /column, xsize=10, value=5000)
-    self.widgets.auto_intensity = cw_bgroup(row, ['Manual', 'Auto'], $
-                                             row=1, set_value=1, /exclusive)
-
+    self.widgets.new_window = cw_bgroup(row, ['New window', 'Re-use window'], $
+                                            label_left='iTools display:', $
+                                            row=1, set_value=0, /exclusive)
 
     row = widget_base(col, /row)
-    self.widgets.direction = cw_bgroup(row, ['X', 'Y', 'Z'], $
-                                            label_left='Direction:', $
-                                            row=1, set_value=2, /exclusive)
-    !order=1
-    self.widgets.order = cw_bgroup(row, ['Bottom to top', 'Top to bottom'], $
-                                            label_left='Order:', row=1, $
-                                            set_value=1, /exclusive)
+    self.widgets.grid = cw_bgroup(row, ['Overplot', 'Grid'], $
+                                            label_left='Multiple detectors:', $
+                                            row=1, set_value=0, /exclusive)
 
     row = widget_base(col, /row)
-    self.widgets.zoom = cw_bgroup(row, ['1/4', '1/2', '1', '2', '4'], $
-                                    label_left='Zoom:', row=1, $
-                                    set_value=2, /exclusive, $
-                                    uvalue=[-4, -2, 1, 2, 4])
+    self.widgets.display2D = cw_bgroup(row, ['Image', 'Surface', 'Contour'], $
+                                            label_left='2D display:', $
+                                            row=1, set_value=0, /exclusive)
 
     row = widget_base(col, /row)
-    t = widget_label(row, value='Display slice:')
-    col1=widget_base(row, /column)
-    self.widgets.disp_slice = cw_field(col1, /integer, title='',$
-                                       xsize=10, value=100, /return_events)
-    self.widgets.disp_slider = widget_slider(col1, value=100, min=0, max=100, $
-                                             /suppress_value)
-    col1 = widget_base(row, /column, /align_center)
-    self.widgets.display_slice = widget_button(col1, value='Display slice')
-
-    row = widget_base(col, /row)
-    t = widget_label(row, value='Volume render:')
-    self.widgets.volume_render = widget_button(row, value='Volume render')
-
-    t = widget_label(col, value='Movies', font=self.fonts.heading1)
-
-    row = widget_base(col, /row)
-    self.widgets.movie_output = cw_bgroup(row, ['Screen', 'JPEGs', 'MPEG', 'TIFF'], $
-                                            label_left='Output:', row=1, $
-                                            set_value=0, /exclusive)
-    col1 = widget_base(row, /column, /align_center)
-    self.widgets.make_movie = widget_button(col1, value='Make movie')
-
-    row = widget_base(col, /row)
-    self.widgets.first_slice = cw_field(row, title='First slice', /integer, $
-                                        /column, xsize=10, value=0)
-    self.widgets.last_slice = cw_field(row, title='Last slice', /integer, $
-                                        /column, xsize=10, value=0)
-    self.widgets.slice_step = cw_field(row, title='Step', /integer, $
-                                        /column, xsize=10, value=1)
-
-    row = widget_base(col, /row)
-    self.widgets.movie_file = cw_field(row, title="JPEG/MPEG/TIFF file name:", $
-                                        xsize=40)
-
+    self.widgets.ascii_options = cw_bgroup(row, ['Positioners', 'Detectors', 'ExtraPVs', $
+                                                 'To file', 'To screen'], $
+                                            label_left='ASCII output:', $
+                                            row=1, set_value=[0,0,0,0,1], /nonexclusive)
 
     widget_control, self.widgets.base, set_uvalue=self
     ; Make all of the base widgets the same size so they line up nicely
     g = widget_info(self.widgets.scan_file_base, /geometry)
-    widget_control, self.widgets.scan_base, xsize=g.xsize
     widget_control, self.widgets.visualize_base, xsize=g.xsize
-    widget_control, self.widgets.base, /realize
 
+    widget_control, self.widgets.ascii_output, sensitive=0
+    widget_control, self.widgets.free_memory, sensitive=0
+    widget_control, self.widgets.visualize_base, sensitive=0
+
+    widget_control, self.widgets.base, /realize
 
     xmanager, 'epics_sscan_display', self.widgets.base, /no_block
     return, 1
@@ -476,12 +425,64 @@ pro epics_sscan_display::cleanup
 end
 
 pro epics_sscan_display__define
-
     MAX_SCANS = 4
+    MAX_POSITIONERS = 4
+    MAX_DETECTORS = 85
+
+    positioner_widgets = {epics_sscan_display_positioner_widgets, $
+        base: 0L, $
+        select: 0L, $
+        name: 0L, $
+        description: 0L, $
+        units:  0L, $
+        readbackName: 0L, $
+        readbackDescription: 0L, $
+        readbackUnits: 0L $
+    }
+
+    detector_widgets = {epics_sscan_display_detector_widgets, $
+        base: 0L, $
+        select: 0L, $
+        name: 0L, $
+        description: 0L, $
+        units:  0L $
+    }
+
+    dimension_widgets = {epics_sscan_display_dimension_widgets, $
+        base: 0L, $
+        start: 0L, $
+        stop: 0L, $
+        total: 0L $
+    }
+
+    scan_widgets = {epics_sscan_display_scan_widgets, $
+        base: 0L, $
+        name: 0L, $
+        npts: 0L, $
+        cpt:  0L, $
+        display: 0L, $
+        dimensions: 0L, $
+        positioners: replicate(positioner_widgets, MAX_POSITIONERS), $
+        detectors: replicate(detector_widgets, MAX_DETECTORS), $
+        dims: replicate(dimension_widgets, MAX_SCANS), $
+        select_all_detectors: 0L, $
+        deselect_all_detectors: 0L $
+    }
+
+    scan_settings = {epics_sscan_scan_settings, $
+        rank: 0L, $
+        dimensions: lonarr(MAX_SCANS), $
+        dimensions_string: '', $
+        start: lonarr(MAX_SCANS), $
+        stop:  lonarr(MAX_SCANS), $
+        total: lonarr(MAX_SCANS) $
+    }
+
     widgets={ epics_sscan_display_widgets, $
         base: 0L, $
         change_directory: 0L, $
         read_scan_file: 0L, $
+        ascii_output: 0L, $
         free_memory: 0L, $
         exit: 0L, $
         scan_file_base: 0L, $
@@ -490,30 +491,14 @@ pro epics_sscan_display__define
         dimensions: 0L, $
         status: 0L, $
         abort: 0L, $
+        scan_base_top: 0L, $
         scan_base: 0L, $
-        scan_bases: lonarr(MAX_SCANS), $
+        scans: replicate(scan_widgets, MAX_SCANS), $
         visualize_base: 0L, $
-        nx: 0L, $
-        ny: 0L, $
-        nz: 0L, $
-        volume_type: 0L, $
-        direction: 0L, $
-        order: 0L, $
-        display_min: 0L, $
-        display_max: 0L, $
-        auto_intensity: 0L, $
-        disp_slice: 0L, $
-        disp_slider: 0L, $
-        display_slice: 0L, $
-        volume_render: 0L, $
-        movie_output: 0L, $
-        first_slice: 0L, $
-        last_slice: 0L, $
-        slice_step: 0L, $
-        zoom: 0L, $
-        movie_file: 0L, $
-        make_movie: 0L $
-
+        grid: 0L, $
+        display2D: 0L, $
+        new_window: 0L, $
+        ascii_options: 0L $
     }
 
     fonts = {tomo_fonts, $
@@ -525,6 +510,7 @@ pro epics_sscan_display__define
     epics_sscan_display = {epics_sscan_display, $
         widgets: widgets, $
         pscan: ptr_new(), $
+        scan_settings: replicate(scan_settings, MAX_SCANS), $
         fonts: fonts $
     }
 end
