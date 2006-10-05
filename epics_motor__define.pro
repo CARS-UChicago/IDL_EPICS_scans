@@ -587,7 +587,7 @@ if (keyword_set(home) or limit) then begin
         self->move, target, /dial, /ignore_limits
         self->wait, /ignore_limits
         wait, .2
-        self->set_slew_speed, (prev_speed/100. > self->get_base_speed())
+        self->set_slew_speed, ((prev_speed/100.) > self->get_base_speed())
         wait, .2
         self->move, sign*huge, /dial, /ignore_limits
         self->wait, /ignore_limits
