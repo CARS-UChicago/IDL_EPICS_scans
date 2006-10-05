@@ -239,12 +239,15 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
 ;      scan. Passed to epics_sscan::getDetector()
 ;
 ;   [X,Y,Z]RANGE:
-;      Used this keyword to restrict the range of array elements returned in
-;      the X, Y, or Z dimensions.  Each can be either:
-;         - A scaler, in which case a single array element is returned in
-;            that direction
+;      Use this keyword to restrict the range of array elements returned in
+;      the X, Y, or Z dimensions. 3-D arrays indices are defined as [X,Y,Z].
+;      [X,Y,Z]RANGE can each be either:
+;         - A scalar, in which case a single array element is returned in
+;           that direction.  This will reduce the rank of the detector data
+;           by 1.
 ;         - A 2-element array, in which case a range of array elements are
-;           returned in that direction
+;           returned in that direction.  If both elements of the array are
+;           the same it is equivalent to specifying a scalar for that keyword.
 ;
 ;   [X,Y,Z]TOTAL:
 ;      Set this flag to sum over the array elements in the X, Y, or Z
@@ -290,11 +293,26 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
    data_rank = size(*d[0].pData, /n_dimensions)
    dims = size(*d[0].pData, /dimensions)
    p = replicate({epics_sscanPositioner}, data_rank)
-   p[0] = self->getPositioner(scan=scan, positioner=positioner, /copy)
-   if (size(p[0], /tname) ne 'STRUCT') then return, -1
-   for i=1, data_rank-1 do begin
-      p[i] = self->getPositioner(scan=scan-i, /copy)
-      if (size(p[i], /tname) ne 'STRUCT') then return, -1
+   case n_elements(positioner) of
+      0: begin
+            pos = replicate(1, data_rank)
+         end
+      1: begin
+            pos = replicate(1, data_rank)
+            pos[0] = positioner
+         end
+      data_rank: begin
+            pos = positioner
+         end
+      else: begin
+            print, 'Wrong dimensions on positioner'
+            return, -1
+         end
+   endcase
+   for i=0, data_rank-1 do begin
+      temp = self->getPositioner(scan=scan-i, positioner=pos[i], /copy)
+      if (size(temp, /tname) ne 'STRUCT') then return, -1
+      p[i] = temp
    endfor
    ; Need to make a copy of the data so we don't modify original data in self
    ; Process the [z,y,z]range keywords
@@ -468,7 +486,8 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, a
       step = slow_data[1] - slow_data[0]
       if (step eq 0) then step=1.
       slow_data = slow_data[0] + findgen(n_elements(slow_data)) * step
-      slow_title = p[1].description + ' ' + p[1].units + ' ('+p[1].name+')'
+      slow_title = p[1].description + ' ' + p[1].units
+      if (strlen(p[1].name) gt 0) then slow_title = slow_title + ' ('+p[1].name+')'
    endif
    for i=0, n_detectors-1 do begin
       if (overplot) then begin
@@ -483,7 +502,8 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, a
       if ((n_detectors eq 1) or (keyword_set(grid))) then ytitle=name else ytitle=''
       if (i eq 0) then begin
          x = *p[0].pData
-         xtitle = p[0].description + ' ' + p[0].units + ' ('+p[0].name+')'
+         xtitle = p[0].description + ' ' + p[0].units
+         if (strlen(p[0].name) gt 0) then xtitle = xtitle + ' ('+p[0].name+')'
         case data_rank of
          1: begin
                ; Get the min and max of this data set so we can adjust
@@ -746,8 +766,8 @@ pro epics_sscan::readMDAScanHeader
       scanPointers = lonarr(npts)
       readu, lun, scanPointers
    endif
-   name='' & timeStamp='' & numPositioners=0S & numDetectors=0S & numTriggers=0S
-   readu, lun, name, timeStamp, numPositioners, numDetectors, numTriggers
+   scanName='' & timeStamp='' & numPositioners=0S & numDetectors=0S & numTriggers=0S
+   readu, lun, scanName, timeStamp, numPositioners, numDetectors, numTriggers
    if (numPositioners gt 0) then begin
       positioners = replicate({epics_sscanPositioner}, numPositioners)
       number=0S & name='' & description='' & stepMode='' & units=''
@@ -797,7 +817,7 @@ pro epics_sscan::readMDAScanHeader
       scanHeader.npts = npts
       scanHeader.cpt  = cpt
       if (rank gt 1 ) then scanHeader.pScanPointers = ptr_new(scanPointers)
-      scanHeader.name       = name
+      scanHeader.name       = scanName
       scanHeader.timeStamp      = timeStamp
       scanHeader.numPositioners = numPositioners
       scanHeader.numDetectors   = numDetectors
@@ -871,7 +891,8 @@ pro epics_sscan::read_mda, filename
 ;   Filename:  The name of the MDA file to read.
 ;
 ; EXAMPLE:
-;   IDL> s=read_mda('2idd_0087.mda')
+;   IDL> s=obj_new('epics_sscan')
+;   IDL> s->read_mda, '2idd_0087.mda'
 ;   IDL> s->display               ; Displays the first detector in scan2
 ;
 ; MODIFICATION HISTORY:
