@@ -1,0 +1,292 @@
+<!-- Created by Mark Rivers    on 26-APR-1999 -->
+
+<HTML>
+<HEAD>
+<TITLE>EPICS SSCAN Class Guide</TITLE>
+</HEAD>
+<BODY>
+<H1 align="center">EPICS_SSCAN</H1>
+
+<h2 align="center"><a name="Contents">Contents</a></h2>
+
+<p align="left"><a href="#Introduction">Introduction</a></p>
+
+<p align="left"><a href="#Background">Background</a></p>
+
+<p align="left"><a href="#Examples of Using EPICS_SSCAN">Examples</a></p>
+
+<ul>
+  <li>
+    <p align="left"><a href="#1-D Scan Example">1-D Scan Example</a></li>
+  <li>
+    <p align="left"><a href="#2-D Scan Example">2-D Scan Example</a></li>
+  <li>
+    <p align="left"><a href="#3-D Scan Example">3-D Scan Example</a></li>
+</ul>
+    <p align="left"><a href="#Extending EPICS_SSCAN">Extending EPICS_SSCAN</a>
+
+<h2 align="center"><a name="Introduction">Introduction</a></h2>
+
+This document describes the EPICS_SSCAN IDL object class for reading and
+displaying EPICS scan data.&nbsp;&nbsp;<P>The EPICS_SSCAN class is designed to
+do the following:&nbsp;
+<ul>
+  <li>Provide an object-oriented interface to standard EPICS scans, enabling
+    user written software to easily access scan header information and data.</li>
+  <li>Provide an easy way to read MDA files written by the saveData function in
+    synApps.</li>
+  <li>Provide an easy way to get scan data into the IDL iTools system. iTools
+    provide powerful interfaces for visualizing data, zooming in, adding
+    annotation, and producing publication quality plots.</li>
+  <li>Provide a way to convert binary scan files (e.g. MDA) into ASCII</li>
+</ul>
+<p>The EPICS_SSCAN class uses a command line interface to control
+it.  The
+<a href="epics_sscan_display.html"target="_blank">EPICS_SSCAN_DISPLAY class</a> 
+provides a GUI to select a scan, select detectors to plot,
+etc.&nbsp; That package can be used without an IDL license, using the free IDL Virtual Machine.
+
+EPICS_SSCAN_DISPLAY is designed to enhance and/or replace the existing scanSee IDL
+tools developed by Ben-Chin Cha.&nbsp; These older tools are based on IDL's
+direct graphics system.&nbsp; Much of the visualization functionality written in
+scanSee is now
+included in the new iTools system in a more unified, object-oriented
+framework.&nbsp; For off-line data viewing and preparation of
+publication-quality plots it is clear that the iTools are superior.&nbsp;
+However, it remains to be seen whether the performance of the iTools system will
+be sufficient for on-line data viewing as a scan is being collected.</p>
+<p>
+To use the IDL command line, or to enhance the
+functionality of EPICS_SSCAN, it is necessary to have an IDL license.</p>
+<p>All of these IDL routines and sample MDA data files are available in a 
+<a HREF="../pub/epics_sscan.tar.gz">compressed tar file</a>.</p>
+
+<P>
+Note that the display routines require the iTools system in IDL, which is only available in
+IDL 6.0 and newer releases.
+
+<P>
+Detailed documentation for each routine can be found in the <a href="epics_sscan_class.html">EPICS_SSCAN
+Class Reference</a>.
+
+<h2 align="center"><a name="Background">Background</a></h2>
+
+<P>
+The EPICS scan records provide a very powerful tool for scanning any set of
+&quot;positioners&quot; and reading any set of &quot;detectors&quot;.&nbsp;
+Multi-dimensional scans are easily performed.
+
+<P>
+The saveData system in synApps provides a robust tool to automatically save
+every scan as it is performed without any need for user interaction.&nbsp;
+saveData saves files in a format called &quot;MDA&quot;, which is a portable
+binary format based upon the standard XDR (External Data Representation) data
+representation.&nbsp; saveData saves each complete scan (which may be
+multi-dimensional) in a separate MDA file.<P>IDL 6.0 introduced a powerful
+object-oriented graphics system called iTools.&nbsp; This system provides IDL
+with an easy-to-use system for interactively visualizing data, customizing
+graphics, and producing publication quality output.&nbsp; With iTools users can
+add annotation, change axis format, pan/scroll/zoom through the data, get
+statistics, and save the results for future work. NOTE: The iTools are written
+in IDL, which means that they can be modified and/or extended by sub-classing
+their objects.&nbsp; This does affect their performance however, and it is best to run
+the iTools system on a 1GHz or faster computer.<P>The EPICS_SSCAN class was
+developed to provide a clean, object-oriented interface for reading MDA files,
+and getting the scan data into the IDL iTools system.&nbsp;<P>The initial
+implementation of EPICS_SSCAN only reads MDA files. Future enhancements may add
+a channel-access interface for reading scans from the IOC directly. Additional
+file readers (e.g. Nexus) may be added.
+
+<h2 align="left"><a name="Examples of Using EPICS_SSCAN">Examples of Using
+EPICS_SSCAN</a></h2>
+<P align="left">The following examples use these sample MDA data files that are
+provided in the tar file listed above.
+<ul>
+  <li>
+    <p align="left">13IDC_0027.mda&nbsp; : A 1-D scan (22 KB) with:
+    <ul>
+      <li>
+        <p align="left">Inner scan: 201 points, 1 positioner, 4 detectors</li>
+    </ul>
+  </li>
+  <li>
+    <p align="left">2idd_0087.mda : A 2-D scan (410 KB) with:
+    <ul>
+      <li>
+        <p align="left">Outer scan: 41 points, 1 positioner, 8 detectors</li>
+      <li>
+        <p align="left">Inner scan: 41 points, 1 positioner, 47 detectors</li>
+    </ul>
+  </li>
+  <li>
+    <p align="left">2xfm_0216.mda A 3-D scan (11,910 KB) with
+    <ul>
+      <li>
+        <p align="left">Outer scan: 31 points, 1 positioner, 10 detectors</li>
+      <li>
+        <p align="left">Middle scan: 31 points, 1 positioner, 80 detectors</li>
+      <li>
+        <p align="left">Inner scan: 1000 points, no positioners, 3 detectors</li>
+    </ul>
+  </li>
+</ul>
+        <p align="left">&nbsp;<h3 align="center"><a name="1-D Scan Example">1-D Scan Example</a>
+</h3>
+<p align="left">Read the 1-D dataset</p>
+<div align="left">
+  <pre align="left">IDL&gt; s = read_mda('13IDC_0027.mda')</pre>
+</div>
+<p align="left">Display the first detector.</p>
+<div align="left">
+  <pre align="left">IDL&gt; s-&gt;display</pre>
+</div>
+<p align="left">This produces the following plot:</p>
+<p align="left"><img border="0" src="13IDC_0027_example1.gif" width="618" height="541"></p>
+<p align="left">Now display all of the detectors on a single plot.&nbsp; (The legend
+was added manually by clicking in the dataspace and using Insert/Legend from the
+menu).</p>
+<div align="left">
+  <pre align="left">IDL&gt; s-&gt;display, /all</pre>
+</div>
+<p align="left"><img border="0" src="13IDC_0027_example2.gif" width="618" height="541"></p>
+<p align="left">Look at the data in ASCII:</p>
+<p align="left">IDL&gt; s-&gt;print, /all</p>
+<p align="left"><img border="0" src="13IDC_0027_example3.gif" width="601" height="460"></p>
+<p align="left">&nbsp;</p>
+<h3 align="center"><a name="2-D Scan Example">2-D Scan Example</a>
+</h3>
+<p align="left">Read the 2-D dataset</p>
+<div align="left">
+  <pre align="left">IDL&gt; s=read_mda('2idd_0087.mda')</pre>
+</div>
+<p align="left">Display all of the images in a grid.&nbsp; Note, this takes a
+minute or so, depending on computer speed, because it is displaying 47 images in
+the iImage tool.</p>
+<div align="left">
+  <pre align="left">IDL&gt; s-&gt;display, /all, /grid</pre>
+</div>
+<div align="left">
+  <pre align="left"><img border="0" src="2idd_0087_example1.gif" width="781" height="541"></pre>
+</div>
+<p align="left">Plot a profile of column 20 (X=20) in detector 15.</p>
+<div align="left">
+  <pre align="left">IDL&gt; s-&gt;display, detector=15, xrange=20</pre>
+</div>
+<div align="left">
+  <pre align="left"><img border="0" src="2idd_0087_example2.gif" width="618" height="541"></pre>
+</div>
+<p align="left">Get the data for that column into IDL so we can perform
+calculations on it:</p>
+<pre>IDL&gt; status = s-&gt;getData(p, d, detector=15, xrange=20)
+IDL&gt; positionData = *p.pData
+IDL&gt; detectorData = *d.pData
+IDL&gt; print, positionData
+-10.000000 -9.5000000 -9.0000000 -8.5000000 -8.0000000 -7.5000000 -7.0000000 -6.5000000
+-6.0000000 -5.5000000 -5.0000000 -4.5000000 -4.0000000 -3.5000000 -3.0000000 -2.5000000
+-2.0000000 -1.5000000 -1.0000000 -0.50000000 0.00000000 0.50000000 1.0000000 1.5000000
+2.0000000 2.5000000 3.0000000 3.5000000 4.0000000 4.5000000 5.0000000 5.5000000
+6.0000000 6.5000000 7.0000000 7.5000000 8.0000000 8.5000000 9.0000000 9.5000000
+10.000000
+IDL&gt; print, detectorData
+1812.00 1877.00 1932.00 2076.00 1970.00 1998.00 1974.00 2005.00 2102.00 2128.00
+2161.00 2309.00 2682.00 3750.00 5035.00 6192.00 6689.00 6895.00 7062.00 7088.00
+7080.00 6583.00 7148.00 7220.00 7372.00 7365.00 7221.00 6950.00 5528.00 4442.00
+3217.00 2737.00 2606.00 2614.00 2439.00 2351.00 2361.00 2465.00 2231.00 2183.00
+2232.00
+</pre>
+<h3 align="center"><a name="3-D Scan Example">3-D Scan Example</a>
+</h3>
+<p>Read the 3-D data file.&nbsp; The inner scan for that file is the scanH
+record, and the 3 detectors are the spectra from 3 MCA records.&nbsp;
+</p>
+<pre>IDL&gt; s-&gt;read_mda, '2xfm_0216.mda'</pre>
+<p>Display the spectrum for detector 2 at point [20,10] in black</p>
+<pre>IDL&gt; s-&gt;display, zrange=10, yrange=20, detector=2</pre>
+<p>Overplot the spectrum for point [20,11] in red</p>
+<pre>IDL&gt; s-&gt;display, zrange=11, yrange=20, detector=2, /overplot, color=[255,0,0]</pre>
+<pre>&nbsp;</pre>
+<p align="left">&nbsp;<img border="0" src="2xfm_0216_example1.gif" width="800" height="715"></p>
+
+<p align="left">Note that in the above spectra there is a peak between channels
+250 and 300 that has different intensities at these two pixels.&nbsp; Display an
+image of the intensity in that peak.&nbsp; Use the XRANGE=[250,300] keyword to
+select those channels, and the /XTOTAL keyword to sum the counts in that channel
+range.&nbsp; This reduces the data from 3-D to 2-D.</p>
+<p align="left">Load the &quot;Standard gamma&quot; color table, and read the
+color values into r, g and b.</p>
+<pre>IDL&gt; loadct, 5</pre>
+<pre>IDL&gt; tvlct, r, g, b, /get</pre>
+<p>Display the image of the total counts in channels 250 to 300 using this color
+table</p>
+<pre>IDL&gt; s-&gt;display, detector=2, xrange=[250,300], /xtotal, rgb_table=[[r],[g],[b]]</pre>
+<p align="left"><font SIZE="1"><img SRC="2xfm_0216_example2.gif" width="781" height="541"></font></p>
+
+<p align="left">&nbsp;</p>
+
+<h2 align="center"><a name="Extending EPICS_SSCAN">Extending EPICS_SSCAN</a></h2>
+
+<p>It is easy to extend the EPICS_SSCAN functionality using class inheritance in 
+IDL.&nbsp; This might be done because there is additional structure or 
+information in the MDA file that the general interface cannot display or 
+extract.&nbsp; Many groups that are using saveData to save MDA files are saving 
+&quot;meta-data&quot; about the scan and the EPICS environment in the ExtraPVs in the MDA 
+file.</p>
+<p>As an example, the 2-ID-B station at the APS does scanning where the 
+inner-most scan consists of MCA data collected using the getArrays mode.&nbsp; A 
+difficulty arises because there is no positioner associated with&nbsp; this 
+scan, so the EPICS_SSCAN::DISPLAY routine cannot display calibrated units for 
+the spectra.&nbsp; The necessary calibration information is, however, stored in 
+ExtraPVs for the MDA files collected at this station.&nbsp; One solution to the 
+problem is to make a new class EPICS_SSCAN_2IDB, which is derived from 
+EPICS_SSCAN.&nbsp; Here is the source code for the derived class:</p>
+<pre>pro epics_sscan_2idb::read_mda, filename
+   ; Call the base class method
+   self-&gt;epics_sscan::read_mda, filename
+   ; Is this a 2idb fly scan where the first detector in the innermost scan is an MCA, and there is
+   ; no positioner?
+   sh = (*self.fileHeader.pScanHeader)[self.fileHeader.rank-1]
+   if (sh.numPositioners ne 0) then return
+   d = *sh.pDetectors[0]
+   if (strpos(d.name, 'mca') eq -1) then return
+   ; Get the energy calibration coefficients. For now we hard-code what extra PVs hold this, but we
+   ; could easily search through all of the extraPVs for the .CALO, .CALS and .CALQ fields for this
+   ; MCA.
+   offset = *(*self.fileHeader.pExtraPVs)[68].pValue
+   slope = *(*self.fileHeader.pExtraPVs)[69].pValue
+   quad = *(*self.fileHeader.pExtraPVs)[70].pValue
+   energy = findgen(sh.npts)
+   energy = offset + slope*energy + quad*energy^2
+   p = {epics_sscanPositioner}
+   p.description = 'Energy'
+   p.units = 'keV'
+   p.pData = ptr_new(energy)
+   (*self.fileHeader.pScanHeader)[self.fileHeader.rank-1].numPositioners=1
+   (*self.fileHeader.pScanHeader)[self.fileHeader.rank-1].pPositioners[0] = ptr_new(p)
+end
+
+
+pro epics_sscan_2idb__define
+   c = {epics_sscan_2idb, inherits epics_sscan}
+end
+</pre>
+
+<p>Here's the result. Note that the X-axis has the correct title and scale, 
+which it would not have if the EPICS_SSCAN class were used.</p>
+<pre><font size="2">IDL&gt; s = obj_new('epics_sscan_2idb')
+IDL&gt; s-&gt;read_mda, '2idb1_0337.mda'   
+IDL&gt; s-&gt;display, zrange=80, yrange=80
+</font></pre>
+<p></p>
+<p><img border="0" src="2idb_0337_example1.gif" width="873" height="751"></p>
+<p align="left">&nbsp;</p>
+
+<HR>
+<ADDRESS>
+Suggestions and Comments to: 
+<BR>
+<A HREF="mailto:rivers@cars.uchicago.edu">
+Mark Rivers </A> : (rivers@cars.uchicago.edu)
+<BR>
+Last modified: October 12, 2006
+</ADDRESS>
+</BODY>
