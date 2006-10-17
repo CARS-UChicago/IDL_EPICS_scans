@@ -1,0 +1,1 @@
+tar cvzf /home/epics/public_html/pub/epics_sscan.tar.gz *.pro *.sav *.html *.gif *.png mda_data/13IDC_0027.mda mda_data/2idd_0087.mda mda_data/2xfm_0216.mda
