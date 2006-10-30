@@ -46,7 +46,7 @@ pro epics_sscan_display::read_scan_file, file
                                    title='EPICS sscan Scans (' + fileHeader.filename + ')')
    widget_control, self.widgets.scan_base_top, set_uvalue=self
    self.widgets.scan_base = widget_tab(self.widgets.scan_base_top)
-   for i=0, fileHeader.rank-1 do begin
+   for i=0L, fileHeader.rank-1 do begin
        sh = (*fileHeader.pScanHeader)[i]
        col = widget_base(self.widgets.scan_base, /column, $
                          title=sh.name, frame=0)
@@ -69,7 +69,7 @@ pro epics_sscan_display::read_scan_file, file
 
            ; Select the first positioner if no positioner is selected
            if (max(self.scan_settings[i].pos_select[0:sh.numPositioners-1]) eq 0) then self.scan_settings[i].pos_select[0] = 1
-           for j=0, sh.numPositioners-1 do begin
+           for j=0L, sh.numPositioners-1 do begin
                row = widget_base(col, /row)
                p = (*sh.pPositioners)[j]
                data = *p.pData
@@ -113,7 +113,7 @@ pro epics_sscan_display::read_scan_file, file
            det_base = widget_tab(col)
            ; Select the first detector if no detector is selected
            if (max(self.scan_settings[i].det_select[0:sh.numDetectors-1]) eq 0) then self.scan_settings[i].det_select[0] = 1
-           for j=0, sh.numDetectors-1 do begin
+           for j=0L, sh.numDetectors-1 do begin
                if (j mod MAX_DETECTORS_PER_TAB eq 0) then begin
                    tab = widget_base(det_base, /column, frame=0, $
                                      title='Det. '+ strtrim(j+1,2) + '-' + $
@@ -172,7 +172,7 @@ pro epics_sscan_display::read_scan_file, file
            col = widget_base(stab, /column, title='Display range', frame=0)
            row = widget_base(col, /row)
            t = widget_label(row, value='Dimensions: ' + self.scan_settings[i].dimensions_string)
-           for j=0, n_elements(dims)-1 do begin
+           for j=0L, n_elements(dims)-1 do begin
                row = widget_base(col, /row, /align_center)
                t = widget_label(row, value='Dimension ' + strtrim(j+1,2), font=self.fonts.heading2)
                row = widget_base(col, /row, /base_align_center)
@@ -242,14 +242,14 @@ pro epics_sscan_display::display_scan, scan=scan
     i=scan
     sh = (*fileHeader.pScanHeader)[i]
     positioner = 0
-    for j=0, sh.numPositioners-1 do begin
+    for j=0L, sh.numPositioners-1 do begin
         selected = widget_info(self.widgets.scans[i].positioners[j].select, /button_set)
         if (selected) then begin
             positioner = j
             break
         endif
     endfor
-    for j=0, sh.numDetectors-1 do begin
+    for j=0L, sh.numDetectors-1 do begin
         selected = widget_info(self.widgets.scans[i].detectors[j].select, /button_set)
         if (selected) then begin
             if (n_elements(detector) eq 0) then detector = j else detector = [detector, j]
@@ -258,7 +258,7 @@ pro epics_sscan_display::display_scan, scan=scan
 
     range = lonarr(4,2)
     total = lonarr(4)
-    for j=0, self.scan_settings[i].rank-1 do begin
+    for j=0L, self.scan_settings[i].rank-1 do begin
         widget_control, self.widgets.scans[i].dims[j].start, get_value=start
         start = (start-1) > 0 < (self.scan_settings[i].dimensions[j]-1)
         widget_control, self.widgets.scans[i].dims[j].stop, get_value=stop
@@ -305,14 +305,14 @@ pro epics_sscan_display::print_scan, scan=scan
     positioner = 0
     len = strpos(fileHeader.filename, '.mda')
     output = strmid(fileHeader.filename, 0, len) + '.ascii'
-    for j=0, sh.numPositioners-1 do begin
+    for j=0L, sh.numPositioners-1 do begin
         selected = widget_info(self.widgets.scans[i].positioners[j].select, /button_set)
         if (selected) then begin
             positioner = j
             break
         endif
     endfor
-    for j=0, sh.numDetectors-1 do begin
+    for j=0L, sh.numDetectors-1 do begin
         selected = widget_info(self.widgets.scans[i].detectors[j].select, /button_set)
         if (selected) then begin
             if (n_elements(detector) eq 0) then detector = j else detector = [detector, j]
@@ -321,7 +321,7 @@ pro epics_sscan_display::print_scan, scan=scan
 
     range = lonarr(4,2)
     total = lonarr(4)
-    for j=0, self.scan_settings[i].rank-1 do begin
+    for j=0L, self.scan_settings[i].rank-1 do begin
         widget_control, self.widgets.scans[i].dims[j].start, get_value=start
         start = (start-1) > 0 < (self.scan_settings[i].dimensions[j]-1)
         widget_control, self.widgets.scans[i].dims[j].stop, get_value=stop
@@ -424,17 +424,17 @@ pro epics_sscan_display::event, event
     if (not obj_valid(*self.pscan)) then goto, end_event
 
     fileHeader = *self.pscan->getFileHeader()
-    for i=0, fileHeader.rank-1 do begin
+    for i=0L, fileHeader.rank-1 do begin
         sh = (*fileHeader.pScanHeader)[i]
         if (event.id eq self.widgets.scans[i].select_all_detectors) then begin
-            for j=0, sh.numDetectors-1 do  begin
+            for j=0L, sh.numDetectors-1 do  begin
                 widget_control, self.widgets.scans[i].detectors[j].select, set_button=1
             endfor
             goto, end_event
         endif
 
         if (event.id eq self.widgets.scans[i].deselect_all_detectors) then begin
-            for j=0, sh.numDetectors-1 do  begin
+            for j=0L, sh.numDetectors-1 do  begin
                 widget_control, self.widgets.scans[i].detectors[j].select, set_button=0
             endfor
             goto, end_event
@@ -450,7 +450,7 @@ pro epics_sscan_display::event, event
             goto, end_event
         endif
 
-        for j=0, self.scan_settings[i].rank-1 do begin
+        for j=0L, self.scan_settings[i].rank-1 do begin
             widget_control, self.widgets.scans[i].dims[j].mode, get_value=mode
             if (event.id eq self.widgets.scans[i].dims[j].start) then begin
                 start = event.value
@@ -489,14 +489,14 @@ pro epics_sscan_display::event, event
             endif
         endfor
 
-        for j=0, sh.numDetectors-1 do begin
+        for j=0L, sh.numDetectors-1 do begin
             if (event.id eq self.widgets.scans[i].detectors[j].select) then begin
                 self.scan_settings[i].det_select[j] = event.select
                 goto, end_event
             endif
         endfor
 
-        for j=0, sh.numPositioners-1 do begin
+        for j=0L, sh.numPositioners-1 do begin
             if (event.id eq self.widgets.scans[i].positioners[j].select) then begin
                 self.scan_settings[i].pos_select[j] = event.select
                 goto, end_event
