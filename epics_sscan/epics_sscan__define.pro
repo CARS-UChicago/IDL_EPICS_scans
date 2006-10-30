@@ -1,7 +1,7 @@
 function epics_sscan::formatDimensions, dimensions
    dim_string = '['
    ndims = n_elements(dimensions)
-   for idim=0, ndims-2 do begin
+   for idim=0L, ndims-2 do begin
       dim_string = dim_string + strtrim(dimensions[idim],2) + ','
    endfor
    dim_string = dim_string + strtrim(dimensions[ndims-1],2)+']'
@@ -113,7 +113,7 @@ if (n_elements(scan) eq 0) then scan=self.fileHeader.rank
       p.pData = ptr_new(findgen(sh.npts))
    endelse
    if (keyword_set(copy)) then begin
-      for i=0, n_elements(p)-1 do p[i].pData = ptr_new(*p[i].pData)
+      for i=0L, n_elements(p)-1 do p[i].pData = ptr_new(*p[i].pData)
    endif
    return, p
 end
@@ -196,7 +196,7 @@ function epics_sscan::getDetector, scan=scan, detector=detector, all=all, copy=c
       d = (*sh.pDetectors)[detector-1]
    endelse
    if (keyword_set(copy)) then begin
-      for i=0, n_elements(d)-1 do d[i].pData = ptr_new(*d[i].pData)
+      for i=0L, n_elements(d)-1 do d[i].pData = ptr_new(*d[i].pData)
    endif
    return, d
 end
@@ -276,8 +276,7 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
 ;      D     STRUCT    = -> EPICS_SSCANDETECTOR Array[47]
 ;   IDL> status=s->getData(p, d, scan=2, detector=10, /ytotal, yrange=[10,20])
 ;   IDL> help, *d.pData
-;      <PtrHeapVar74409>
-;         FLOAT     = Array[41]
+;      <PtrHeapVar74409> FLOAT     = Array[41]
 ;
 ; MODIFICATION HISTORY:
 ;   Written by:  Mark Rivers, Nov. 8, 2003
@@ -309,7 +308,7 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
             return, -1
          end
    endcase
-   for i=0, data_rank-1 do begin
+   for i=0L, data_rank-1 do begin
       temp = self->getPositioner(scan=scan-i, positioner=pos[i], /copy)
       if (size(temp, /tname) ne 'STRUCT') then return, -1
       p[i] = temp
@@ -322,7 +321,7 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
          dims[2] = 1
       endif else dims[2] = zrange[1]-zrange[0]+1
       *p[2].pData = (*p[2].pData)[zrange[0]:zrange[1]]
-      for i=0, n_detectors-1 do begin
+      for i=0L, n_detectors-1 do begin
          *d[i].pData = reform((*d[i].pData)[*,*,zrange[0]:zrange[1]], dims)
       endfor
    endif
@@ -332,7 +331,7 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
          dims[1] = 1
       endif else dims[1] = yrange[1]-yrange[0]+1
       *p[1].pData = (*p[1].pData)[yrange[0]:yrange[1]]
-      for i=0, n_detectors-1 do begin
+      for i=0L, n_detectors-1 do begin
          *d[i].pData = reform((*d[i].pData)[*,yrange[0]:yrange[1],*], dims)
       endfor
    endif
@@ -342,25 +341,25 @@ function epics_sscan::getData, p, d, scan=scan, detector=detector, positioner=po
          dims[0] = 1
       endif else dims[0] = xrange[1]-xrange[0]+1
       *p[0].pData = (*p[0].pData)[xrange[0]:xrange[1]]
-      for i=0, n_detectors-1 do begin
+      for i=0L, n_detectors-1 do begin
          *d[i].pData = reform((*d[i].pData)[xrange[0]:xrange[1],*,*], dims)
       endfor
    endif
    ; Process the [x,y,z]total keywords
    if ((data_rank gt 2) and (keyword_set(ztotal))) then begin
       dims[2] = 1
-      for i=0, n_detectors-1 do *d[i].pData = total(*d[i].pData, 3)
+      for i=0L, n_detectors-1 do *d[i].pData = total(*d[i].pData, 3)
    endif
    if ((data_rank gt 1) and (keyword_set(ytotal))) then begin
       dims[1] = 1
-      for i=0, n_detectors-1 do *d[i].pData = total(*d[i].pData, 2)
+      for i=0L, n_detectors-1 do *d[i].pData = total(*d[i].pData, 2)
    endif
    if (keyword_set(xtotal)) then begin
       dims[0] = 1
-      for i=0, n_detectors-1 do *d[i].pData = total(*d[i].pData, 1)
+      for i=0L, n_detectors-1 do *d[i].pData = total(*d[i].pData, 1)
    endif
    ; Eliminate any redundant dimensions
-   for i=0, n_detectors-1 do *d[i].pData = reform(*d[i].pData, /overwrite)
+   for i=0L, n_detectors-1 do *d[i].pData = reform(*d[i].pData, /overwrite)
    ; Return array of valid positioners
    valid_dims = where((dims gt 1), count)
    if (count le 0) then return, -1
@@ -522,7 +521,7 @@ pro epics_sscan::display, scan=scan, positioner=positioner, detector=detector, a
       endif
    endif
 
-   for i=0, n_detectors-1 do begin
+   for i=0L, n_detectors-1 do begin
       if (overplot) then begin
          color = self->getColor(i)
          sym_index = i+1
@@ -712,7 +711,7 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
    printf, lun, 'File name:  ', self.fileHeader.fileName
    printf, lun, 'Version:    ', self.fileHeader.version
    printf, lun, 'Dimensions: ', self->formatDimensions(*self.fileHeader.pDims)
-   for i=0, self.fileHeader.rank-1 do begin
+   for i=0L, self.fileHeader.rank-1 do begin
       printf, lun
       sh = (*self.fileHeader.pScanHeader)[i]
       printf, lun, 'Scan:             ', i+1
@@ -724,7 +723,7 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
       printf, lun, '   Num. detectors:   ', sh.numDetectors
       printf, lun, '   Num. triggers:    ', sh.numTriggers
       if (1) then begin
-         for j=0, sh.numPositioners-1 do begin
+         for j=0L, sh.numPositioners-1 do begin
             p = (*sh.pPositioners)[j]
             printf, lun, '   Positioner: ', j+1
             printf, lun, '      Name:        ', p.name
@@ -743,13 +742,13 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
                printf, lun, data
             endif
          endfor
-         for j=0, sh.numTriggers-1 do begin
+         for j=0L, sh.numTriggers-1 do begin
             t = (*sh.pTriggers)[j]
             printf, lun, '   Trigger: ', j+1
             printf, lun, '      Name:    ', t.name
             printf, lun, '      Command: ', t.command
          endfor
-         for j=0, sh.numDetectors-1 do begin
+         for j=0L, sh.numDetectors-1 do begin
             d = (*sh.pDetectors)[j]
             printf, lun, '   Detector: ', j+1
             printf, lun, '      Name:        ', d.name
@@ -770,7 +769,7 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
       printf, lun, 'Num. Extra PVs:', self.fileHeader.numExtra
       ; We need the following conditional for reading incomplete scan files
       if (self.extraPointer gt 0) then begin
-         for j=0, self.fileHeader.numExtra-1 do begin
+         for j=0L, self.fileHeader.numExtra-1 do begin
             e = (*self.fileHeader.pExtraPVs)[j]
             printf, lun, '   Extra PV: ', j+1
             printf, lun, '      Name:        ', e.name
@@ -884,13 +883,13 @@ pro epics_sscan::print_columns, scan=scan, positioner=positioner, detector=detec
    case data_rank of
    1: begin
       line = 'Index' + delimiter + p[0].name
-      for j=0, n_elements(d)-1 do begin
+      for j=0L, n_elements(d)-1 do begin
          line = line + delimiter + d[j].name
       endfor
       printf, lun, line
-      for i=0, n_elements(x)-1 do begin
+      for i=0L, n_elements(x)-1 do begin
          line = strtrim(i+1,2) + delimiter + strtrim(x[i],2)
-         for j=0, n_elements(d)-1 do begin
+         for j=0L, n_elements(d)-1 do begin
             line = line + delimiter + strtrim((*d[j].pData)[i], 2)
          endfor
          printf, lun, line
@@ -899,15 +898,15 @@ pro epics_sscan::print_columns, scan=scan, positioner=positioner, detector=detec
 
    2: begin
       line = 'Slow' + delimiter + 'Fast' + delimiter + slow_title + delimiter + xtitle
-      for j=0, n_elements(d)-1 do begin
+      for j=0L, n_elements(d)-1 do begin
          line = line + delimiter + d[j].name
       endfor
       printf, lun, line
-      for i=0, n_elements(slow_data)-1 do begin
-         for j=0, n_elements(x)-1 do begin
+      for i=0L, n_elements(slow_data)-1 do begin
+         for j=0L, n_elements(x)-1 do begin
             line = strtrim(i+1,2) + delimiter + strtrim(j+1, 2) + delimiter + $
                    strtrim(slow_data[i], 2) + delimiter + strtrim(x[j],2)
-            for k=0, n_elements(d)-1 do begin
+            for k=0L, n_elements(d)-1 do begin
                line = line + delimiter + strtrim((*d[k].pData)[j,i], 2)
             endfor
             printf, lun, line
@@ -940,19 +939,19 @@ pro epics_sscan::readMDAExtraPVs
    DBR_CTRL_CHAR   = 32
    DBR_CTRL_LONG   = 33
    DBR_CTRL_DOUBLE = 34
-   num_extra = 0S
+   num_extra = 0L
    readu, lun, num_extra
    self.fileHeader.numExtra = num_extra
    if (num_extra le 0) then return
    extraPVs = replicate({epics_sscanExtraPV}, num_extra)
-   for i=0, num_extra-1 do begin
-      name='' & description='' & type=0S
+   for i=0L, num_extra-1 do begin
+      name='' & description='' & type=0L
       readu, lun, name, description, type
       extraPVs[i].name = name
       extraPVs[i].description = description
       extraPVs[i].type = type
       if (type ne DBR_STRING) then begin
-         count=0S & units=''
+         count=0L & units=''
          readu, lun, count, units
          extraPVs[i].count = count
          extraPVs[i].units = units
@@ -978,19 +977,19 @@ end
 
 pro epics_sscan::readMDAScanHeader
    lun = self.lun
-   rank=0S & npts=0S & cpt=0S
+   rank=0S & npts=0L & cpt=0L
    readu, lun, rank, npts, cpt
    if (rank gt 1) then begin
       scanPointers = lonarr(npts)
       readu, lun, scanPointers
    endif
-   scanName='' & timeStamp='' & numPositioners=0S & numDetectors=0S & numTriggers=0S
+   scanName='' & timeStamp='' & numPositioners=0L & numDetectors=0L & numTriggers=0L
    readu, lun, scanName, timeStamp, numPositioners, numDetectors, numTriggers
    if (numPositioners gt 0) then begin
       positioners = replicate({epics_sscanPositioner}, numPositioners)
-      number=0S & name='' & description='' & stepMode='' & units=''
+      number=0L & name='' & description='' & stepMode='' & units=''
       readbackName='' & readbackDescription='' & readbackUnits=''
-      for i=0, numPositioners-1 do begin
+      for i=0L, numPositioners-1 do begin
          readu, lun, number, name, description, stepMode, units, $
                      readbackName, readbackDescription, readbackUnits
          p = {epics_sscanPositioner}
@@ -1002,8 +1001,8 @@ pro epics_sscan::readMDAScanHeader
    endif
    if (numDetectors gt 0) then begin
       detectors = replicate({epics_sscanDetector}, numDetectors)
-      number=0S & name='' & description='' & units=''
-      for i=0, numDetectors-1 do begin
+      number=0L & name='' & description='' & units=''
+      for i=0L, numDetectors-1 do begin
          readu, lun, number, name, description, units
          p = {epics_sscanDetector}
          p.number=number & p.name=name & p.description=description & p.units=units
@@ -1012,7 +1011,7 @@ pro epics_sscan::readMDAScanHeader
    endif
    if (numTriggers gt 0) then begin
       triggers = replicate({epics_sscanTrigger}, numTriggers)
-      for i=0, numTriggers-1 do begin
+      for i=0L, numTriggers-1 do begin
          p = {epics_sscanTrigger}
          readu, lun, p
          triggers[i] = p
@@ -1042,7 +1041,7 @@ pro epics_sscan::readMDAScanHeader
       scanHeader.numTriggers    = numTriggers
       if (numPositioners gt 0) then begin
          scanHeader.pPositioners = ptr_new(positioners, /no_copy)
-         for i=0, numPositioners-1 do begin
+         for i=0L, numPositioners-1 do begin
             (*scanHeader.pPositioners)[i].pData = ptr_new(positionerData[*,i])
          endfor
       endif
@@ -1051,7 +1050,7 @@ pro epics_sscan::readMDAScanHeader
          dims = (*self.fileHeader.pDims)[0:index]
          dims = reverse(dims)
          data = fltarr(dims)
-         for i=0, numDetectors-1 do begin
+         for i=0L, numDetectors-1 do begin
             ; Create data arrays
             (*scanHeader.pDetectors)[i].pData = ptr_new(data)
          endfor
@@ -1060,13 +1059,13 @@ pro epics_sscan::readMDAScanHeader
       (*self.fileHeader.pScanHeader)[index] = scanHeader
    endif
    offset = (*self.pDataOffset)[index]
-   for i=0, numDetectors-1 do begin
+   for i=0L, numDetectors-1 do begin
       (*(*(*self.fileHeader.pScanHeader)[index].pDetectors)[i].pData)[offset] = detectorData[*,i]
    endfor
    (*self.pDataOffset)[index] += npts
    if (rank gt 1) then begin
       ; Call ourselves recursively for each scan inside this scan
-      for i=0, cpt-1 do begin
+      for i=0L, cpt-1 do begin
          self->readMDAScanHeader
       endfor
    endif
@@ -1082,10 +1081,10 @@ pro epics_sscan::readMDAFileHeader
    self.fileHeader.rank    = rank
    self.fileHeader.pScanHeader = ptr_new(replicate({epics_sscanScanHeader}, rank))
    self.pDataOffset = ptr_new(lonarr(rank))
-   dims = intarr(rank)
+   dims = lonarr(rank)
    readu, lun, dims
    self.fileHeader.pDims = ptr_new(dims)
-   isRegular=0S & extraPointer=0L
+   isRegular=0L & extraPointer=0L
    readu, lun, isRegular, extraPointer
    self.fileHeader.isRegular    = isRegular
    self.extraPointer = extraPointer
@@ -1152,32 +1151,32 @@ function epics_sscan::getFileHeader
 ;   IDL> s=read_mda('2idd_0087.mda')
 ;   IDL> h=s->getFileHeader()
 ;   IDL> help, /structure, h
-;   ** Structure EPICS_SSCANFILEHEADER, 9 tags, length=40, data length=38:
+;   ** Structure EPICS_SSCANFILEHEADER, 9 tags, length=44, data length=42:
 ;      FILENAME        STRING    '2idd_0087.mda'
 ;      VERSION         FLOAT           1.30000
 ;      NUMBER          LONG                87
 ;      RANK            INT              2
-;      PDIMS           POINTER   <PtrHeapVar80803>
-;      ISREGULAR       INT              1
-;      NUMEXTRA        INT             43
-;      PSCANHEADER     POINTER   <PtrHeapVar80801>
-;      PEXTRAPVS       POINTER   <PtrHeapVar80911>
-;   IDL> print, 'dims=', *h.pDims
-;      dims=      41      41
-;   IDL> help, /structure, (*h.pScanHeader)[0]
-;      ** Structure EPICS_SSCANSCANHEADER, 12 tags, length=56, data length=52:
+;      PDIMS           POINTER   <PtrHeapVar4>
+;      ISREGULAR       LONG                 1
+;      NUMEXTRA        LONG                43
+;      PSCANHEADER     POINTER   <PtrHeapVar2>
+;      PEXTRAPVS       POINTER   <PtrHeapVar112>
+;   IDL>  print, 'dims=', *h.pDims
+;      dims=          41          41
+;   IDL>  help, /structure, (*h.pScanHeader)[0]
+;   ** Structure EPICS_SSCANSCANHEADER, 12 tags, length=64, data length=62:
 ;      RANK            INT              2
-;      NPTS            INT             41
-;      CPT             INT             41
-;      PSCANPOINTERS   POINTER   <PtrHeapVar80804>
-;      NAME            STRING    '2idd:A4sens_unit.VAL'
+;      NPTS            LONG                41
+;      CPT             LONG                41
+;      PSCANPOINTERS   POINTER   <PtrHeapVar5>
+;      NAME            STRING    '2idd:scan2'
 ;      TIMESTAMP       STRING    'Jun 19, 2003 23:59:05.085430051'
-;      NUMPOSITIONERS  INT              1
-;      NUMDETECTORS    INT              8
-;      NUMTRIGGERS     INT              1
-;      PPOSITIONERS    POINTER   <PtrHeapVar80805>
-;      PDETECTORS      POINTER   <PtrHeapVar80807>
-;      PTRIGGERS       POINTER   <PtrHeapVar80816>;
+;      NUMPOSITIONERS  LONG                 1
+;      NUMDETECTORS    LONG                 8
+;      NUMTRIGGERS     LONG                 1
+;      PPOSITIONERS    POINTER   <PtrHeapVar6>
+;      PDETECTORS      POINTER   <PtrHeapVar8>
+;      PTRIGGERS       POINTER   <PtrHeapVar17>
 ;
 ; MODIFICATION HISTORY:
 ;   Written by:  Mark Rivers, Nov. 8, 2003
@@ -1199,23 +1198,23 @@ pro epics_sscan::cleanup_ptrs
    ; This routine cleans up by freeing pointers
    ptr_free, self.fileHeader.pDims
    if (ptr_valid(self.fileHeader.pExtraPVs)) then begin
-      for i=0, n_elements(*self.fileHeader.pExtraPVs)-1 do begin
+      for i=0L, n_elements(*self.fileHeader.pExtraPVs)-1 do begin
          ptr_free, (*self.fileHeader.pExtraPVs)[i].pValue
       endfor
    endif
    ptr_free, self.fileHeader.pExtraPVs
    if (ptr_valid(self.fileHeader.pScanHeader)) then begin
-      for i=0, n_elements(*self.fileHeader.pScanHeader)-1 do begin
+      for i=0L, n_elements(*self.fileHeader.pScanHeader)-1 do begin
          sh = (*self.fileHeader.pScanHeader)[i]
          ptr_free, sh.pScanPointers
          if (ptr_valid(sh.pPositioners)) then begin
-            for j=0, n_elements(*sh.pPositioners)-1 do begin
+            for j=0L, n_elements(*sh.pPositioners)-1 do begin
                ptr_free, (*sh.pPositioners)[j].pData
             endfor
          endif
          ptr_free, sh.pPositioners
          if (ptr_valid(sh.pDetectors)) then begin
-            for j=0, n_elements(*sh.pDetectors)-1 do begin
+            for j=0L, n_elements(*sh.pDetectors)-1 do begin
                ptr_free, (*sh.pDetectors)[j].pData
             endfor
          endif
@@ -1278,8 +1277,8 @@ pro epics_sscan__define
 ;       number:       0L, $        ; Scan number
 ;       rank:         0S, $        ; Rank of outermost scan (1 for 1-D, 2 for 2-D, etc.)
 ;       pDims:        ptr_new(), $ ; Pointer to array of scan dimensions
-;       isRegular:    0S, $        ; Don't know what this means yet
-;       numExtra:     0S, $        ; Number of extra PVs
+;       isRegular:    0L, $        ; Don't know what this means yet
+;       numExtra:     0L, $        ; Number of extra PVs
 ;       pScanHeader:  ptr_new(), $ ; Pointer to array of {epics_sscanScanHeader} structures
 ;                                  ; Array dimensions = "rank"
 ;       pExtraPVs:    ptr_new() $  ; Pointer to array of {epics_sscanExtraPV} structures
@@ -1291,14 +1290,14 @@ pro epics_sscan__define
 ;   This structure is defined as follows:
 ;      {epics_sscanScanHeader, $     ; Defines a single scan.
 ;       rank:           0S, $        ; Rank of this scan (1 for 1-D, 2 for 2-D, etc.)
-;       npts:           0S, $        ; Number of points in this scan
-;       cpt:            0S, $        ; Current point.  Less than npts if scan is incomplete.
+;       npts:           0L, $        ; Number of points in this scan
+;       cpt:            0L, $        ; Current point.  Less than npts if scan is incomplete.
 ;       pScanPointers:  ptr_new(), $ ; Pointers to offsets in file where scans start.
 ;       name:           '', $        ; Name of this scan.  This seems wrong in MDA files.
 ;       timeStamp:      '', $        ; Time when scan completed
-;       numPositioners: 0S, $        ; Number of positioners
-;       numDetectors:   0S, $        ; Number of detectors
-;       numTriggers:    0S, $        ; Number of detector triggers
+;       numPositioners: 0L, $        ; Number of positioners
+;       numDetectors:   0L, $        ; Number of detectors
+;       numTriggers:    0L, $        ; Number of detector triggers
 ;       pPositioners:   ptr_new(), $ ; Pointer to array of {epics_sscanPositioner}
 ;                                    ; Array dimensions = "numPositioners"
 ;       pDetectors:     ptr_new(), $ ; Pointer to array of {epics_sscanDetector}
@@ -1311,7 +1310,7 @@ pro epics_sscan__define
 ;   single positioner. {epics_sscanScanHeader} points to an array of these.
 ;   This structure is defined as follows:
 ;      {epics_sscanPositioner, $     ; Defines a positioner
-;       number:              0S, $   ; Index number
+;       number:              0L, $   ; Index number
 ;       name:                '', $   ; PV name
 ;       description:         '', $   ; Description string
 ;       stepMode:            '', $   ; Step mode (LINEAR, TABLE, etc.)
@@ -1328,7 +1327,7 @@ pro epics_sscan__define
 ;   single detector. {epics_sscanScanHeader} points to an array of these.
 ;   This structure is defined as follows:
 ;      {epics_sscanDetector, $       ; Defines a detector
-;       number:      0S, $           ; Index number
+;       number:      0L, $           ; Index number
 ;       name:        '', $           ; PV name
 ;       description: '', $           ; Description string
 ;       units:       '', $           ; Units string
@@ -1344,7 +1343,7 @@ pro epics_sscan__define
 ;   This structure is defined as follows:
 ;   scanTrigger = $
 ;      {epics_sscanTrigger, $        ; Defines a scan trigger
-;       number:  0S, $               ; Index number
+;       number:  0L, $               ; Index number
 ;       name:    '', $               ; PV name
 ;       command: 0. $                ; Command value written to PV to trigger
 ;   }
@@ -1356,8 +1355,8 @@ pro epics_sscan__define
 ;      {epics_sscanExtraPV, $        ; Defines an "extra" PV stored with scan
 ;       name:        '', $           ; PV name
 ;       description: '', $           ; Description string
-;       type:        0S, $           ; Data type (see db_access.h for defs)
-;       count:       0S, $           ; Number of values
+;       type:        0L, $           ; Data type (see db_access.h for defs)
+;       count:       0L, $           ; Number of values
 ;       units:       '', $           ; Units string
 ;       pValue:      ptr_new() $     ; Pointer to value
 ;   }
@@ -1378,8 +1377,8 @@ pro epics_sscan__define
        number:       0L, $        ; Scan number
        rank:         0S, $        ; Rank of outermost scan (1 for 1-D, 2 for 2-D, etc.)
        pDims:        ptr_new(), $ ; Pointer to array of scan dimensions
-       isRegular:    0S, $        ; Don't know what this means yet
-       numExtra:     0S, $        ; Number of extra PVs
+       isRegular:    0L, $        ; Don't know what this means yet
+       numExtra:     0L, $        ; Number of extra PVs
        pScanHeader:  ptr_new(), $ ; Pointer to array of {epics_sscanScanHeader} structures
                                   ; Array dimensions = "rank"
        pExtraPVs:    ptr_new() $  ; Pointer to array of {epics_sscanExtraPV} structures
@@ -1390,14 +1389,14 @@ pro epics_sscan__define
    scanHeader = $
       {epics_sscanScanHeader, $     ; Defines a single scan.
        rank:           0S, $        ; Rank of this scan (1 for 1-D, 2 for 2-D, etc.)
-       npts:           0S, $        ; Number of points in this scan
-       cpt:            0S, $        ; Current point.  <npts if scan is incomplete.
+       npts:           0L, $        ; Number of points in this scan
+       cpt:            0L, $        ; Current point.  <npts if scan is incomplete.
        pScanPointers:  ptr_new(), $ ; Pointers to offsets in file where scans start.
        name:           '', $        ; Name of this scan.  This seems wrong in MDA files.
        timeStamp:      '', $        ; Time when scan completed
-       numPositioners: 0S, $        ; Number of positioners
-       numDetectors:   0S, $        ; Number of detectors
-       numTriggers:    0S, $        ; Number of detector triggers
+       numPositioners: 0L, $        ; Number of positioners
+       numDetectors:   0L, $        ; Number of detectors
+       numTriggers:    0L, $        ; Number of detector triggers
        pPositioners:   ptr_new(), $ ; Pointer to array of {epics_sscanPositioner}
                                     ; Array dimensions = "numPositioners"
        pDetectors:     ptr_new(), $ ; Pointer to array of {epics_sscanDetector}
@@ -1408,7 +1407,7 @@ pro epics_sscan__define
 
    scanPositioner = $
       {epics_sscanPositioner, $     ; Defines a positioner
-       number:              0S, $   ; Index number
+       number:              0L, $   ; Index number
        name:                '', $   ; PV name
        description:         '', $   ; Description string
        stepMode:            '', $   ; Step mode (LINEAR, TABLE, etc.)
@@ -1423,7 +1422,7 @@ pro epics_sscan__define
 
    scanDetector = $
       {epics_sscanDetector, $       ; Defines a detector
-       number:      0S, $           ; Index number
+       number:      0L, $           ; Index number
        name:        '', $           ; PV name
        description: '', $           ; Description string
        units:       '', $           ; Units string
@@ -1436,7 +1435,7 @@ pro epics_sscan__define
 
    scanTrigger = $
       {epics_sscanTrigger, $        ; Defines a scan trigger
-       number:  0S, $               ; Index number
+       number:  0L, $               ; Index number
        name:    '', $               ; PV name
        command: 0. $                ; Command value written to PV to trigger
    }
@@ -1445,8 +1444,8 @@ pro epics_sscan__define
       {epics_sscanExtraPV, $        ; Defines an "extra" PV stored with scan
        name:        '', $           ; PV name
        description: '', $           ; Description string
-       type:        0S, $           ; Data type (see dbAccess.h for defs)
-       count:       0S, $           ; Number of values
+       type:        0L, $           ; Data type (see dbAccess.h for defs)
+       count:       0L, $           ; Number of values
        units:       '', $           ; Units string
        pValue:      ptr_new() $     ; Pointer to value
    }
