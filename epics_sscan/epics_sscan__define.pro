@@ -959,10 +959,10 @@ pro epics_sscan::readMDAExtraPVs
       case type of
          DBR_STRING:      value = ''
          DBR_CTRL_STRING: value = bytarr(count)
-         DBR_CTRL_SHORT:  value = 0S
-         DBR_CTRL_LONG:   value = 0L
-         DBR_CTRL_FLOAT:  value = 0.
-         DBR_CTRL_DOUBLE: value = 0.D0
+         DBR_CTRL_SHORT:  value = intarr(count)
+         DBR_CTRL_LONG:   value = lonarr(count)
+         DBR_CTRL_FLOAT:  value = fltarr(count)
+         DBR_CTRL_DOUBLE: value = dblarr(count)
          else: begin
             message, 'Unknown data type in extraPV=', type
             value = ''
