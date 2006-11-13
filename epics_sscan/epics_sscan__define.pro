@@ -958,7 +958,7 @@ pro epics_sscan::readMDAExtraPVs
       endif
       case type of
          DBR_STRING:      value = ''
-         DBR_CTRL_STRING: value = bytarr(count)
+         DBR_CTRL_CHAR:   value = bytarr(count)
          DBR_CTRL_SHORT:  value = intarr(count)
          DBR_CTRL_LONG:   value = lonarr(count)
          DBR_CTRL_FLOAT:  value = fltarr(count)
