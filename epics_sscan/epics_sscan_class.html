@@ -14,7 +14,7 @@ this routine, refer to the IDL Online Help Navigator
 or type: <P>
 <PRE>     ? mk_html_help</PRE><P>
 at the IDL command line prompt.<P>
-<STRONG>Last modified: </STRONG>Thu Oct 12 11:44:15 2006.<P>
+<STRONG>Last modified: </STRONG>Mon Oct 30 12:26:32 2006.<P>
  
 <HR>
  
@@ -276,8 +276,7 @@ at the IDL command line prompt.<P>
       D     STRUCT    = -&gt; EPICS_SSCANDETECTOR Array[47]
    IDL&gt; status=s-&gt;getData(p, d, scan=2, detector=10, /ytotal, yrange=[10,20])
    IDL&gt; help, *d.pData
-      &lt;PtrHeapVar74409&gt;
-         FLOAT     = Array[41]
+      &lt;PtrHeapVar74409&gt; FLOAT     = Array[41]
 
  MODIFICATION HISTORY:
    Written by:  Mark Rivers, Nov. 8, 2003
@@ -376,32 +375,32 @@ at the IDL command line prompt.<P>
    IDL&gt; s=read_mda('2idd_0087.mda')
    IDL&gt; h=s-&gt;getFileHeader()
    IDL&gt; help, /structure, h
-   ** Structure EPICS_SSCANFILEHEADER, 9 tags, length=40, data length=38:
+   ** Structure EPICS_SSCANFILEHEADER, 9 tags, length=44, data length=42:
       FILENAME        STRING    '2idd_0087.mda'
       VERSION         FLOAT           1.30000
       NUMBER          LONG                87
       RANK            INT              2
-      PDIMS           POINTER   &lt;PtrHeapVar80803&gt;
-      ISREGULAR       INT              1
-      NUMEXTRA        INT             43
-      PSCANHEADER     POINTER   &lt;PtrHeapVar80801&gt;
-      PEXTRAPVS       POINTER   &lt;PtrHeapVar80911&gt;
-   IDL&gt; print, 'dims=', *h.pDims
-      dims=      41      41
-   IDL&gt; help, /structure, (*h.pScanHeader)[0]
-      ** Structure EPICS_SSCANSCANHEADER, 12 tags, length=56, data length=52:
+      PDIMS           POINTER   &lt;PtrHeapVar4&gt;
+      ISREGULAR       LONG                 1
+      NUMEXTRA        LONG                43
+      PSCANHEADER     POINTER   &lt;PtrHeapVar2&gt;
+      PEXTRAPVS       POINTER   &lt;PtrHeapVar112&gt;
+   IDL&gt;  print, 'dims=', *h.pDims
+      dims=          41          41
+   IDL&gt;  help, /structure, (*h.pScanHeader)[0]
+   ** Structure EPICS_SSCANSCANHEADER, 12 tags, length=64, data length=62:
       RANK            INT              2
-      NPTS            INT             41
-      CPT             INT             41
-      PSCANPOINTERS   POINTER   &lt;PtrHeapVar80804&gt;
-      NAME            STRING    '2idd:A4sens_unit.VAL'
+      NPTS            LONG                41
+      CPT             LONG                41
+      PSCANPOINTERS   POINTER   &lt;PtrHeapVar5&gt;
+      NAME            STRING    '2idd:scan2'
       TIMESTAMP       STRING    'Jun 19, 2003 23:59:05.085430051'
-      NUMPOSITIONERS  INT              1
-      NUMDETECTORS    INT              8
-      NUMTRIGGERS     INT              1
-      PPOSITIONERS    POINTER   &lt;PtrHeapVar80805&gt;
-      PDETECTORS      POINTER   &lt;PtrHeapVar80807&gt;
-      PTRIGGERS       POINTER   &lt;PtrHeapVar80816&gt;;
+      NUMPOSITIONERS  LONG                 1
+      NUMDETECTORS    LONG                 8
+      NUMTRIGGERS     LONG                 1
+      PPOSITIONERS    POINTER   &lt;PtrHeapVar6&gt;
+      PDETECTORS      POINTER   &lt;PtrHeapVar8&gt;
+      PTRIGGERS       POINTER   &lt;PtrHeapVar17&gt;
 
  MODIFICATION HISTORY:
    Written by:  Mark Rivers, Nov. 8, 2003
@@ -690,8 +689,8 @@ at the IDL command line prompt.<P>
        number:       0L, $        ; Scan number
        rank:         0S, $        ; Rank of outermost scan (1 for 1-D, 2 for 2-D, etc.)
        pDims:        ptr_new(), $ ; Pointer to array of scan dimensions
-       isRegular:    0S, $        ; Don't know what this means yet
-       numExtra:     0S, $        ; Number of extra PVs
+       isRegular:    0L, $        ; Don't know what this means yet
+       numExtra:     0L, $        ; Number of extra PVs
        pScanHeader:  ptr_new(), $ ; Pointer to array of {epics_sscanScanHeader} structures
                                   ; Array dimensions = &quot;rank&quot;
        pExtraPVs:    ptr_new() $  ; Pointer to array of {epics_sscanExtraPV} structures
@@ -703,14 +702,14 @@ at the IDL command line prompt.<P>
    This structure is defined as follows:
       {epics_sscanScanHeader, $     ; Defines a single scan.
        rank:           0S, $        ; Rank of this scan (1 for 1-D, 2 for 2-D, etc.)
-       npts:           0S, $        ; Number of points in this scan
-       cpt:            0S, $        ; Current point.  Less than npts if scan is incomplete.
+       npts:           0L, $        ; Number of points in this scan
+       cpt:            0L, $        ; Current point.  Less than npts if scan is incomplete.
        pScanPointers:  ptr_new(), $ ; Pointers to offsets in file where scans start.
        name:           '', $        ; Name of this scan.  This seems wrong in MDA files.
        timeStamp:      '', $        ; Time when scan completed
-       numPositioners: 0S, $        ; Number of positioners
-       numDetectors:   0S, $        ; Number of detectors
-       numTriggers:    0S, $        ; Number of detector triggers
+       numPositioners: 0L, $        ; Number of positioners
+       numDetectors:   0L, $        ; Number of detectors
+       numTriggers:    0L, $        ; Number of detector triggers
        pPositioners:   ptr_new(), $ ; Pointer to array of {epics_sscanPositioner}
                                     ; Array dimensions = &quot;numPositioners&quot;
        pDetectors:     ptr_new(), $ ; Pointer to array of {epics_sscanDetector}
@@ -723,7 +722,7 @@ at the IDL command line prompt.<P>
    single positioner. {epics_sscanScanHeader} points to an array of these.
    This structure is defined as follows:
       {epics_sscanPositioner, $     ; Defines a positioner
-       number:              0S, $   ; Index number
+       number:              0L, $   ; Index number
        name:                '', $   ; PV name
        description:         '', $   ; Description string
        stepMode:            '', $   ; Step mode (LINEAR, TABLE, etc.)
@@ -740,7 +739,7 @@ at the IDL command line prompt.<P>
    single detector. {epics_sscanScanHeader} points to an array of these.
    This structure is defined as follows:
       {epics_sscanDetector, $       ; Defines a detector
-       number:      0S, $           ; Index number
+       number:      0L, $           ; Index number
        name:        '', $           ; PV name
        description: '', $           ; Description string
        units:       '', $           ; Units string
@@ -756,7 +755,7 @@ at the IDL command line prompt.<P>
    This structure is defined as follows:
    scanTrigger = $
       {epics_sscanTrigger, $        ; Defines a scan trigger
-       number:  0S, $               ; Index number
+       number:  0L, $               ; Index number
        name:    '', $               ; PV name
        command: 0. $                ; Command value written to PV to trigger
    }
@@ -768,8 +767,8 @@ at the IDL command line prompt.<P>
       {epics_sscanExtraPV, $        ; Defines an &quot;extra&quot; PV stored with scan
        name:        '', $           ; PV name
        description: '', $           ; Description string
-       type:        0S, $           ; Data type (see db_access.h for defs)
-       count:       0S, $           ; Number of values
+       type:        0L, $           ; Data type (see db_access.h for defs)
+       count:       0L, $           ; Number of values
        units:       '', $           ; Units string
        pValue:      ptr_new() $     ; Pointer to value
    }
