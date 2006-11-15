@@ -774,6 +774,8 @@ pro epics_sscan::print, positioners=positioners, detectors=detectors, $
             printf, lun, '   Extra PV: ', j+1
             printf, lun, '      Name:        ', e.name
             printf, lun, '      Description: ', e.description
+            printf, lun, '      Type:        ', e.type
+            printf, lun, '      Count:       ', e.count
             printf, lun, '      Units:       ', e.units
             printf, lun, '      Value:       ', *e.pValue
          endfor
@@ -958,7 +960,7 @@ pro epics_sscan::readMDAExtraPVs
       endif
       case type of
          DBR_STRING:      value = ''
-         DBR_CTRL_CHAR:   value = bytarr(count)
+         DBR_CTRL_CHAR:   value = intarr(count)
          DBR_CTRL_SHORT:  value = intarr(count)
          DBR_CTRL_LONG:   value = lonarr(count)
          DBR_CTRL_FLOAT:  value = fltarr(count)
