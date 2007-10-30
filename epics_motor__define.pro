@@ -993,6 +993,9 @@ pro epics_motor::move, relative=relative, dial=dial, steps=steps, value, $
 
 signal_limits = not keyword_set(ignore_limits)
 
+; Read the DMOV field to clear the monitor on it
+t = caget(self.record_name + '.DMOV', temp)
+
 if (keyword_set(dial)) then begin
     ; Position in dial coordinates
     if (keyword_set(relative)) then begin
@@ -1018,6 +1021,16 @@ endif else begin
         t = caput(self.record_name + '.VAL', value)
     endelse
 endelse
+
+; Wait for the DMOV to make a transition, so we know the motor 
+; has started.  If we don't do this then motor->done() can return
+; 1 when the motor has not yet begun to move
+; Don't wait more than 1 second in case something is wrong
+t0 = systime(1)
+while (cacheckmonitor(self.record_name + '.DMOV') eq 0) do begin
+    t1 = systime(1)
+    if ((t1 - t0) gt 1.0) then break
+endwhile
 ; Check for limit violations
 t = caget(self.record_name + '.LVIO', limit)
 if (signal_limits and (limit ne 0)) then $
