@@ -1,5 +1,5 @@
 ;*****************************************************************************
-pro epics_scaler::wait, dwell_time
+pro epics_scaler::wait, start=start, stop=stop
 ;+
 ; NAME:
 ;       EPICS_SCALER::WAIT
@@ -17,12 +17,22 @@ pro epics_scaler::wait, dwell_time
 ; INPUTS:
 ;       None
 ;
+; KEYWORD_PARAMETERS:
+;       START:
+;           Set this flag to wait for counting to start.
+;       STOP:
+;           Set this flag to wait for counting to stop.  This is the default.
+;
+;       If both the START and STOP keywords are given then the routine will wait
+;       first for acquisition to start and then for acquistion to stop.  If only
+;       /START is given then it will not wait for acquisition to stop.
+;
 ; OUTPUTS:
 ;       None
 ;
 ; PROCEDURE:
 ;	This routine simply tests whether the scaler is done counting. If
-;       it is then the routine returns.  If it is not it waits for 10% of the
+;       it is then the routine returns.  If it is not it waits for 1% of the
 ;       counting time or 0.1 second (whichever is less) and tries again.
 ;
 ; EXAMPLE:
@@ -32,17 +42,43 @@ pro epics_scaler::wait, dwell_time
 ;
 ; MODIFICATION HISTORY:
 ;       Written by:     Mark Rivers, October 1, 1997
+;       4-Mar-2002  MLR Added START and STOP keywords.  Previously it would
+;                       only wait for stop.  Eliminated unused "dwell_time" input.
+;                       Changed logic to eliminate initial wait if already done.
+;                       Changed dwell from 10% to 1% of counting time
 ;-
 
-t = caget(self.record_name + '.FREQ', freq)
-t = caget(self.record_name + '.PR1', preset)  ; Preset counts
-dwell_time = preset/freq/10. < 0.1 ; Wait for 10% of dwell time or 0.1 second,
+t = caget(self.record_name + '.TP', preset)  ; Preset time
+
+if ((n_elements(start) eq 0) and (n_elements(stop) eq 0)) then stop=1
+dwell_time = (preset/100.) < 0.1 ; Wait for 1% of count time or 0.1 second,
                                    ; whichever is less
-while (1) do begin
-    wait, dwell_time
-    t = caget(self.record_name + '.CNT', busy)
-    if (busy eq 0) then return
-endwhile
+cnt = self.record_name + '.CNT'
+val = self.record_name + '.VAL'
+; Clear both monitors
+t = caget(cnt, busy)
+t = caget(val, time)
+
+; If /START was specified than wait until we receive a monitor
+if (keyword_set(start)) then begin
+   while(1) do begin
+      t = cacheckmonitor(cnt)
+      if (t eq 1) then goto, transition1
+      wait, dwell_time
+   endwhile
+endif
+
+transition1:
+; If /STOP was specified wait for a monitor on VAL.
+if (keyword_set(stop)) then begin
+    while (1) do begin
+        t = cacheckmonitor(val)
+        if (t eq 1) then goto, done
+        wait, dwell_time
+    endwhile
+endif
+
+done:
 end
 
 
@@ -117,15 +153,15 @@ pro epics_scaler::start, dwell_time
 ;       scaler->START, Time
 ;
 ; OPTIONAL INPUTS:
-;       Time:  The preset counting time in seconds.  If this input parameter 
-;              is not specified then the preset time of the scaler is not 
+;       Time:  The preset counting time in seconds.  If this input parameter
+;              is not specified then the preset time of the scaler is not
 ;              changed.
 ;
 ; OUTPUTS:
 ;       None
 ;
 ; SIDE EFFECTS:
-;       Before starting the scaler the counts on all of the channels are set 
+;       Before starting the scaler the counts on all of the channels are set
 ;       to 0.  This is how the Joerger scaler works.
 ;
 ; RESTRICTIONS:
@@ -134,7 +170,7 @@ pro epics_scaler::start, dwell_time
 ;       output of the module to the first input channel.  It assumes that this
 ;       channel has been configured to gate (perhaps EPICS_SCALER::INIT
 ;       should do this?)
-;       This routine reads but does not alter the clock frequency.  It assumes 
+;       This routine reads but does not alter the clock frequency.  It assumes
 ;       that the scaler has been set up with a reasonable clock frequency, i.e.
 ;       one which is faster than the preset time!
 ;
@@ -157,14 +193,12 @@ pro epics_scaler::start, dwell_time
 ;-
 
 if (n_elements(dwell_time) ne 0) then begin
-    t = caget(self.record_name + '.FREQ', freq)
     t = caput(self.record_name +'.CNT', 0, /WAIT)            ; Stop counting
     t = caput(self.record_name +'.CONT', 0, /WAIT)           ; Oneshot
-    t = caput(self.record_name +'.PR1', dwell_time*freq, /WAIT) ; Preset counts
+    t = caput(self.record_name +'.TP', dwell_time, /WAIT) ; Preset time
     t = caput(self.record_name +'.CNT', 1)            ; Start counting
 endif else begin
     t = caput(self.record_name +'.CNT', 0, /WAIT)      ; Stop counting
-    t = caput(self.record_name +'.CONT', 0, /WAIT)     ; Oneshot
     t = caput(self.record_name +'.CNT', 1)      ; Start counting
 endelse
 end
@@ -198,10 +232,10 @@ pro epics_scaler::scaler_stop
 ;       is a bug in IDL 5.0 such that class procedures can have name conflicts
 ;       with IDL procedures of the same name.  This is the case with the IDL
 ;       STOP procedure.  This routine may be renamed if this problem is fixed.
-;       
+;
 ; EXAMPLE:
 ;       scaler = obj_new('epics_scaler', '13IDC:scaler1')
-;       scaler->START               ; Start counting 
+;       scaler->START               ; Start counting
 ;       scaler->STOP                ; Stop immediately
 ;       counts = scaler->READ()     ; Read the counts on all of the channels
 ;
@@ -262,6 +296,7 @@ endif else begin
     title = strarr(self.nchans)
     for i=1,self.nchans do begin
         field = '.NM' + strtrim(i,2)
+        temp = 'Unknown'
         t = caget(self.record_name + field, temp)
         title[i-1]=temp
     endfor
@@ -364,8 +399,9 @@ function epics_scaler::init, record_name
     self.nchans = nchans
     ; Set channel access monitors on all fields we will be reading
     caStartGroup
-    t = casetmonitor(self.record_name + '.FREQ')
+    t = casetmonitor(self.record_name + '.TP')
     t = casetmonitor(self.record_name + '.CNT')
+    t = casetmonitor(self.record_name + '.VAL')
     for i=1,self.nchans do begin
         num = strtrim(string(i), 2)
         t = casetmonitor(self.record_name + '.PR' + num)
