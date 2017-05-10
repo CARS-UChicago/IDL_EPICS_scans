@@ -31,7 +31,7 @@ for i=0, sd.n_motors-1 do begin
   sd.motors(i)=m
   md(i).name = name
   msg1 = ' for motor ' + name
-  md(i).start(0) = sd.motors(i)->get_position()
+  md(i).start(0) = sd.motors[i]->get_position()
   get_step = 1
   if sd.n_dims eq 1 and sd.n_motors gt 1 then begin
     md(i).n_parts = 1 

@@ -303,8 +303,8 @@ pro new_scan_params, index, widgets
    if (not obj_valid(sd.motors(index))) then return
    mot = md(index)
    ; Make sure start, stop, and step are all integer # of motor steps
-   scale = sd.motors(index)->get_scale()
-   position = sd.motors(index)->get_position()
+   scale = sd.motors[index]->get_scale()
+   position = sd.motors[index]->get_position()
    mot.start[0] = round(mot.start[0]*scale) / scale
    mot.stop[0] = round(mot.stop[0]*scale) / scale
    mot.inc[0] = round(mot.inc[0]*scale) / scale
@@ -356,7 +356,6 @@ widget_control, event.top, get_uvalue=widgets, /no_copy
 if n_elements(widgets) eq 0 then begin
     ; This is an event during a scan (when xmanager is inactive)
     ; Ignore it.
-    print, 'got event, id = ', event.id
     return
 endif
 
@@ -365,7 +364,7 @@ case event.id of
     ; Read the current motor position, store it, and display it.
     for i=0,1 do begin
         if obj_valid(sd.motors(i)) then begin
-            pos = sd.motors(i)->get_position()
+            pos = sd.motors[i]->get_position()
             widget_control, widgets.mp(i).position, set_value=pos
         endif
     endfor
@@ -486,8 +485,8 @@ widget_control, event.top, get_uvalue=widgets, /no_copy
         endif
         obj_destroy, sd.motors(i)
         sd.motors(i) = m
-        md(i).name = sd.motors(i)->get_name()
-        position = sd.motors(i)->get_position()
+        md(i).name = sd.motors[i]->get_name()
+        position = sd.motors[i]->get_position()
         ; Use the same values of relative start and stop positions and step
         widget_control, widgets.mp(i).rel_start, get_value=rel_start
         widget_control, widgets.mp(i).rel_stop, get_value=rel_stop
@@ -503,11 +502,11 @@ widget_control, event.top, get_uvalue=widgets, /no_copy
          md(i).stop[0] = event.value
          new_scan_params, i, widgets
       endif else if (event.id eq widgets.mp(i).rel_start) then begin
-         position = sd.motors(i)->get_position()
+         position = sd.motors[i]->get_position()
          md(i).start[0] = position + event.value
          new_scan_params, i, widgets
       endif else if (event.id eq widgets.mp(i).rel_stop) then begin
-         position = sd.motors(i)->get_position()
+         position = sd.motors[i]->get_position()
          md(i).stop[0] = position + event.value
          new_scan_params, i, widgets
       endif else if (event.id eq widgets.mp(i).step) then begin

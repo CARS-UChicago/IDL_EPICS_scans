@@ -68,24 +68,24 @@ for row=0, n_rows-1 do begin
 
     ; Move to next point - skip if last point
     if (col ne n_cols-1) then begin
-      sd.motors(0)->move, x_dist(col+1)
+      sd.motors[0]->move, x_dist(col+1)
       ; If this is line scan move any other motors
       if line_scan then $
-        for i=1, sd.n_motors-1 do sd.motors(i)->move, /relative, $
-                                                            md(i).inc(0)
-      for i=0, sd.n_motors-1 do sd.motors(i)->wait
+        for i=1, sd.n_motors-1 do sd.motors[i]->move, /relative, $
+                                                            md[i].inc[0]
+      for i=0, sd.n_motors-1 do sd.motors[i]->wait
     endif
 
   endfor ; Fast motor loop
 
   ; Move slow axis, skip if last point or if line scan
   if (row ne n_rows-1) and (not line_scan) then begin
-    sd.motors(1)->move, y_dist(row+1)
-    sd.motors(1)->wait
+    sd.motors[1]->move, y_dist(row+1)
+    sd.motors[1]->wait
 
     ; Move fast motor back to beginning of scan
-    sd.motors(0)->move, md(0).start(0)
-    sd.motors(0)->wait
+    sd.motors[0]->move, md[0].start[0]
+    sd.motors[0]->wait
   endif
 
 endfor  ; Slow scan loop

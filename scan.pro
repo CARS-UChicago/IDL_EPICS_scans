@@ -135,26 +135,26 @@ if n_elements(motor) ne 0 then begin
   for i=0, n_elements(motor)-1 do begin
     m = obj_new('epics_motor', motor)
     if (not obj_valid(m)) then message, 'Unknown motor= ' + motor
-    sd.motors(i) = m
-    md(i).name = sd.motors(i)->get_name()
+    sd.motors[i] = m
+    md[i].name = sd.motors[i]->get_name()
   endfor
 endif
 
 ; Get the current (home) positions of each motor
 for i=0, sd.n_motors-1 do begin
-  md(i).home = sd.motors(i)->get_position()
+  md[i].home = sd.motors[i]->get_position()
 endfor
 
 if n_elements(start) ne 0 then begin
   n = -1
   for i=0, sd.n_motors-1 do begin
-    for j=0, md(i).n_parts-1 do begin
+    for j=0, md[i].n_parts-1 do begin
       n = n + 1
       if n lt n_elements(start) then begin
         if keyword_set(relative) then begin 
-          md(i).start(j) = md(i).home + start(n)
+          md[i].start(j) = md[i].home + start(n)
         endif else begin
-          md(i).start(j) = start(n)
+          md[i].start(j) = start(n)
         endelse
       endif
     endfor
@@ -164,13 +164,13 @@ endif
 if n_elements(stop) ne 0 then begin
   n = -1
   for i=0, sd.n_motors-1 do begin
-    for j=0, md(i).n_parts-1 do begin
+    for j=0, md[i].n_parts-1 do begin
       n = n + 1
       if n lt n_elements(stop) then begin
         if keyword_set(relative) then begin 
-          md(i).stop(j) = md(i).home + stop(n)
+          md[i].stop(j) = md[i].home + stop(n)
         endif else begin
-          md(i).stop(j) = stop(n)
+          md[i].stop(j) = stop(n)
         endelse
       endif
     endfor
@@ -180,42 +180,42 @@ endif
 if n_elements(step) ne 0 then begin
   n = -1
   for i=0, sd.n_motors-1 do begin
-    for j=0, md(i).n_parts-1 do begin
+    for j=0, md[i].n_parts-1 do begin
       n = n + 1
-      if n lt n_elements(step) then md(i).inc(j) = step(n)
+      if n lt n_elements(step) then md[i].inc(j) = step(n)
     endfor
   endfor
 endif
 
 ; Make sure the motor increments are an integral nonzero number of motor steps
 for i=0, sd.n_motors-1 do begin
-  scale = sd.motors(i)->get_scale()
-  for j=0, md(i).n_parts-1 do begin
-    t = round(md(i).inc(j) * scale) / scale
+  scale = sd.motors[i]->get_scale()
+  for j=0, md[i].n_parts-1 do begin
+    t = round(md[i].inc(j) * scale) / scale
     if t eq 0. then t = 1. / scale 
-    if (abs(t) ne abs(md(i).inc(j))) then begin
-      message, string('Step size of motor ' + md(i).name +' changed from ', $
-                      md(i).inc(j), ' to ', t, format = '(a,g0.0,a,g0.0)'), $
+    if (abs(t) ne abs(md[i].inc(j))) then begin
+      message, string('Step size of motor ' + md[i].name +' changed from ', $
+                      md[i].inc(j), ' to ', t, format = '(a,g0.0,a,g0.0)'), $
                       /continue
-      md(i).inc(j) = t
+      md[i].inc(j) = t
     endif
   endfor
 endfor
 
 ; Correct the sign of the motor increments if necessary
 for i=0, sd.n_motors-1 do begin
-  for j=0, md(i).n_parts-1 do begin
-    if (md(i).stop(j) gt md(i).start(j)) then begin
-      md(i).inc(j) = abs(md(i).inc(j)) 
+  for j=0, md[i].n_parts-1 do begin
+    if (md[i].stop(j) gt md[i].start(j)) then begin
+      md[i].inc(j) = abs(md[i].inc(j)) 
     endif else begin
-      md(i).inc(j) = -abs(md(i).inc(j))
+      md[i].inc(j) = -abs(md[i].inc(j))
     endelse
   endfor
 endfor
      
 if n_elements(plot) ne 0 then begin
   sd.plot=-1
-  for i=0, n_elements(plot)-1 do sd.plot(plot(i)) = 1
+  for i=0, n_elements(plot)-1 do sd.plot(plot[i]) = 1
 endif
 
 if n_elements(title) ne 0 then sd.title = title
@@ -265,14 +265,14 @@ case sd.scan_type of
         ; The number of data at each pixel is the number of scalers
         n_data = sd.n_scalers
         data_title = strarr(n_data)
-        for i=0, sd.n_scalers-1 do data_title(i) = sd.scalers[i].title
+        for i=0, sd.n_scalers-1 do data_title[i] = sd.scalers[i].title
     end
   ROI_SCAN:      begin
         ; The number of data at each pixel is the number of ROIs plus the number of
         ; scalers plus 2, for live time and real time.
         n_data = sd.n_rois + sd.n_scalers + 2
         data_title = strarr(n_data)
-        for i=0, sd.n_rois-1 do data_title(i) = sd.roi(i).name
+        for i=0, sd.n_rois-1 do data_title[i] = sd.roi[i].name
         for i=0, sd.n_scalers-1 do data_title(sd.n_rois+i) = sd.scalers[i].title
         data_title(sd.n_rois + sd.n_scalers) = 'Real time (msec)'
         data_title(sd.n_rois + sd.n_scalers + 1) = 'Live time (msec)'
@@ -303,8 +303,8 @@ user_buffer = [0B]
 print, 'Type ^P to pause scan after next pixel'
 
 ; Move motors to beginning of scan
-for i=0, sd.n_motors-1 do sd.motors(i)->move, md(i).start(0)
-for i=0, sd.n_motors-1 do sd.motors(i)->wait
+for i=0, sd.n_motors-1 do sd.motors[i]->move, md[i].start(0)
+for i=0, sd.n_motors-1 do sd.motors[i]->wait
 
 ; Reset abort scan flag
 sd.abort_scan=0
@@ -320,8 +320,8 @@ endcase
 ; Reset abort scan flag in case scan was aborted
 sd.abort_scan=0
 ; Move all of the motors back to the start of the scan
-for i=0, sd.n_motors-1 do sd.motors(i)->move, md(i).home
-for i=0, sd.n_motors-1 do sd.motors(i)->wait
+for i=0, sd.n_motors-1 do sd.motors[i]->move, md[i].home
+for i=0, sd.n_motors-1 do sd.motors[i]->wait
 
 if ((md(0).n_parts gt 1) or (md(1).n_parts gt 1)) then begin
     nbytes = 4 * (n_rows + n_cols)

@@ -18,15 +18,14 @@ if (sd.timing_mode eq REAL_TIME_MODE) then begin
    presets.real_time = sd.dwell_time
    presets.live_time = 0.
 endif else begin
-   presets.real_time = 0. 
+   presets.real_time = 0.
    presets.live_time = sd.dwell_time
 endelse
 sd.mca->set_presets, presets
 
 for row=0, n_rows-1 do begin
   for col=0, n_cols-1 do begin
-
-    ; The motors are in the correct position. 
+    ; The motors are in the correct position.
     ; Clear data, begin acquisition
     ; For now we assume that all scalers are on one module
     ; and that there is only one MCA record involved
@@ -38,24 +37,22 @@ for row=0, n_rows-1 do begin
     if (sd.gated) then begin
         ; If we are gated then the scaler should count for as long as possible
         sd.scaler->start, sd.dwell_time*10
-        ; Wait 0.1 seconds so that we can be sure the scaler has
-        ; actually started counting before turning on MCA
-        wait, 0.1
+        ; Wait till the scaler has actually started counting before turning on MCA
+        sd.scaler->wait, /start
     endif else begin
         sd.scaler->start, sd.dwell_time
     endelse
     sd.mca->acquire_on
 
-    ; Wait for MCA to complete.  Wait 0.1 seconds so that we can be sure the MCA has
-    ; actually started before we test if it is done.
-    wait, 0.1
-    sd.mca->acquire_wait, sd.dwell_time
+    ; Wait for MCA to complete.  Wait till the MCA has
+    ; actually started, then till its done.
+    sd.mca->acquire_wait, sd.dwell_time, /start, /stop
     ; If in gated mode then stop the scaler
     ; If not in gated mode then wait for the scaler
     if (sd.gated) then begin
         sd.scaler->scaler_stop
     endif else begin
-        sd.scaler->wait
+        sd.scaler->wait, /stop
     endelse
 
     ; Save ROI counts
@@ -83,24 +80,23 @@ for row=0, n_rows-1 do begin
 
     ; Move to next point - skip if last point
     if (col ne n_cols-1) then begin
-      sd.motors(0)->move, x_dist(col+1)
+      sd.motors[0]->move, x_dist(col+1)
       ; If this is line scan move any other motors
       if line_scan then $
-        for i=1, sd.n_motors-1 do sd.motors(i)->move, /relative, $
-                                                            md(i).inc(0)
-      for i=0, sd.n_motors-1 do sd.motors(i)->wait
+        for i=1, sd.n_motors-1 do sd.motors[i]->move, /relative, $
+                                                            md[i].inc[0]
+      for i=0, sd.n_motors-1 do sd.motors[i]->wait
     endif
-
   endfor ; Fast motor loop
 
   ; Move slow axis, skip if last point or if line scan
   if (row ne n_rows-1) and (not line_scan) then begin
-    sd.motors(1)->move, y_dist(row+1)
-    sd.motors(1)->wait
+    sd.motors[1]->move, y_dist(row+1)
+    sd.motors[1]->wait
 
     ; Move fast motor back to beginning of scan
-    sd.motors(0)->move, md(0).start(0)
-    sd.motors(0)->wait
+    sd.motors[0]->move, md[0].start[0]
+    sd.motors[0]->wait
   endif
 
 endfor  ; Slow scan loop
