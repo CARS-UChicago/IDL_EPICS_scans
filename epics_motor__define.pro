@@ -468,7 +468,7 @@ while not eof(lun) do begin
            free_lun, lun
            status = 0
            return, cal
-       endif 
+       endif
     endif
 endwhile
 
@@ -502,10 +502,10 @@ pro epics_motor::calibrate, $
 ;       motor->CALIBRATE
 ;
 ; KEYWORD PARAMETERS:
-;       NEGATIVE:  Set this keyword to do the calibration at the negative 
+;       NEGATIVE:  Set this keyword to do the calibration at the negative
 ;                  limit switch.
 ;
-;       POSITIVE:  Set this keyword to do the calibration at the positive 
+;       POSITIVE:  Set this keyword to do the calibration at the positive
 ;                  limit switch.
 ;
 ;       HOME:      Set this keyword to do the calibration at the home position.
@@ -525,18 +525,18 @@ pro epics_motor::calibrate, $
 ;           - If the calibration is done with /NEGATIVE or /POSITIVE
 ;               - Saves the motor soft limit
 ;               - Saves the motor slew speed
-;               - Changes the soft limit to a very large value, so that the 
+;               - Changes the soft limit to a very large value, so that the
 ;                 hard limit can be reached.
 ;               - Hits appropriate limit at the slew speed
 ;               - Backs off 2000 steps
 ;               - Hits appropriate limit at slew speed/100
 ;           - If calibration is done with /HOME
 ;               - Does a motor home
-;           - If the calibration is done with /NEGATIVE, /POSITIVE or /HOME    
-;              - Confirms if user wants to change calibration if /NOCONFIRM not 
+;           - If the calibration is done with /NEGATIVE, /POSITIVE or /HOME
+;              - Confirms if user wants to change calibration if /NOCONFIRM not
 ;                set
 ;              - Puts motor in SET mode
-;              - Sets dial value to calibration 
+;              - Sets dial value to calibration
 ;              - Puts motor in USE mode
 ;              - Restores slew speed
 ;              - Restores soft limit
@@ -606,7 +606,7 @@ if (keyword_set(home) or limit) then begin
                 strtrim(current_dial,2) + ' to ' +  strtrim(cal,2)
     endelse
 
-    ; Set the dial position to the calibration value  
+    ; Set the dial position to the calibration value
     self->set_position, cal, /dial
 
     restore_settings:
@@ -633,7 +633,7 @@ if (keyword_set(offset)) then begin
         print, self.record_name + ': reset offset value to ' + strtrim(off,2)
     endelse
 
-    ; Set the offset to the calibration value  
+    ; Set the offset to the calibration value
     self->set_offset, off
 endif
 end
@@ -706,7 +706,80 @@ pro epics_motor::set_slew_speed, slew
 ;       Written by:     Mark Rivers, October 1, 1997
 ;-
 t = caput(self.record_name + '.VELO', slew)
+if (t ne 0) then print, 'Error setting slew speed, status=', t
 end
+
+;*****************************************************************************
+function epics_motor::get_maximum_speed
+  ;+
+  ; NAME:
+  ;       EPICS_MOTOR::GET_MAXIMUM_SPEED
+  ;
+  ; PURPOSE:
+  ;       This function returns the maximum speed for the motor.  The maximum speed
+  ;       is the maximum value that the slew speed can be set to.
+  ;       The maximum speed is specified in user units per second.
+  ;
+  ; CATEGORY:
+  ;       EPICS device class library.
+  ;
+  ; CALLING SEQUENCE:
+  ;
+  ;       Result = motor->GET_MAXIMUM_SPEED()
+  ;
+  ; INPUTS:
+  ;       None:
+  ;
+  ; OUTPUTS:
+  ;       This function returns the maximum speed for the motor.
+  ;
+  ; EXAMPLE:
+  ;       motor = obj_new('epics_motor', '13IDA:Slit1_Pos')
+  ;       speed = motor->GET_MAXIMUM_SPEED()
+  ;
+  ; MODIFICATION HISTORY:
+  ;       Written by:     Mark Rivers, October 1, 1997
+  ;-
+  t = caget(self.record_name + '.VMAX', speed)
+  if (t ne 0) then print, 'epics_motor::get_maximum_speed error=',t,' reading PV', self.record_name + '.VMAX'
+  return, speed
+end
+
+
+;*****************************************************************************
+pro epics_motor::set_maximum_speed, speed
+  ;+
+  ; NAME:
+  ;       EPICS_MOTOR::SET_MAXIMUM_SPEED
+  ;
+  ; PURPOSE:
+  ;       This procedure sets the maximum speed for the motor.  The maximum speed
+  ;       is the maximum value that the slew speed can be set to.
+  ;       The maximum speed is specified in user units per second.
+  ;
+  ; CATEGORY:
+  ;       EPICS device class library.
+  ;
+  ; CALLING SEQUENCE:
+  ;
+  ;       motor->SET_MAXIMUM_SPEED, Max_speed
+  ;
+  ; INPUTS:
+  ;       Max_speed:  The desired maximum speed in user units per second.
+  ;
+  ; OUTPUTS:
+  ;       None
+  ;
+  ; EXAMPLE:
+  ;       motor = obj_new('epics_motor', '13IDA:Slit1_Pos')
+  ;       motor->SET_MAXIMUM_SPEED, .1
+  ;
+  ; MODIFICATION HISTORY:
+  ;       Written by:     Mark Rivers, October 1, 1997
+  ;-
+  t = caput(self.record_name + '.VMAX', speed)
+end
+
 
 
 ;*****************************************************************************
@@ -931,7 +1004,7 @@ pro epics_motor::move, relative=relative, dial=dial, steps=steps, value, $
 ;
 ; PURPOSE:
 ;       This procedure moves the motor.  The move can be specified in either
-;       user coordinates, dial coordinates or steps, and the position can be 
+;       user coordinates, dial coordinates or steps, and the position can be
 ;       specified in either absolute or relative coordinates.
 ;
 ; CATEGORY:
@@ -971,8 +1044,8 @@ pro epics_motor::move, relative=relative, dial=dial, steps=steps, value, $
 ; SIDE EFFECTS:
 ;       The routine checks whether the move caused soft limit or hard limit
 ;       errors.  If it did then the routine signals the error with the IDL
-;       MESSAGE procedure unless the IGNORE_LIMITS keyword is set.  This will 
-;       cause execution to halt within this routine unless an error handler 
+;       MESSAGE procedure unless the IGNORE_LIMITS keyword is set.  This will
+;       cause execution to halt within this routine unless an error handler
 ;       has been established with the IDL CATCH procedure.
 ;
 ; EXAMPLE:
@@ -1022,14 +1095,18 @@ endif else begin
     endelse
 endelse
 
-; Wait for the DMOV to make a transition, so we know the motor 
+; Wait for the DMOV to make a transition, so we know the motor
 ; has started.  If we don't do this then motor->done() can return
 ; 1 when the motor has not yet begun to move
 ; Don't wait more than 1 second in case something is wrong
 t0 = systime(1)
 while (cacheckmonitor(self.record_name + '.DMOV') eq 0) do begin
     t1 = systime(1)
-    if ((t1 - t0) gt 1.0) then break
+    wait, 0.01
+    if ((t1 - t0) gt 1.0) then begin
+       print, 'epics_motor::move, motor='+self.record_name+' timeout waiting for DMOV event'
+       break
+    endif
 endwhile
 ; Check for limit violations
 t = caget(self.record_name + '.LVIO', limit)
@@ -1075,7 +1152,7 @@ function epics_motor::done, ignore_limits=ignore_limits
 ;       The routine checks whether the motor stopped due to a soft limit or
 ;       hard limit error.  If it did then the routine signals the error with
 ;       the IDL MESSAGE procedure, unless the IGNORE_LIMITS keyowrd is set.
-;       This will cause execution to halt within this routine unless an error 
+;       This will cause execution to halt within this routine unless an error
 ;       handler has been established with the IDL CATCH procedure.
 ;
 ; EXAMPLE:
