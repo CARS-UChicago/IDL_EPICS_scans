@@ -1,5 +1,7 @@
 
-@scan_dims
+MAX_POS         =    4
+MAX_DET         =   70
+ETOK            =  0.2624682917
 
 Widget_Control, event.top, get_uval = p
 ErrorNo = 0

@@ -11,35 +11,42 @@ case uval of
     'collect': begin
         sc   = (*p).scaler_pv
         ctime= (*p).ctime
-        t    = ca_put((*p).sh_clos,1)
+        t    = caput((*p).sh_clos,1)
         t    = caget((*p).shutter, sh_status)
         wait, 0.5
         t    = caget(sc  + '.CONT', save_mode)
         t    = caget(sc  + '.TP'  , save_time)
-        t    = ca_put(sc + '.TP'  , ctime)
-        
+        t    = caput(sc + '.TP'  , ctime)
+        ;print, 'collect for ', ctime
+        ;print, 'scaler pv  =' , sc
         (*p).scaler_obj->start, ctime
-        (*p).scaler_obj->wait
+        wait, ctime+2
+;;;        (*p).scaler_obj->wait
+
         counts  = (*p).scaler_obj->read()
 ; 
         sx  = size(counts)
         tx   = strtrim(string(counts[0],format='(i11)')) 
+        ;print, 'counts size ', sx
+        ;print, counts
         for i = 1, sx[1]-1 do begin 
             ax   = string(byte(i+65))
             ix   = strtrim(string(i+1,format='(i1.1)')) 
             cx   = strtrim(string(counts[i],format='(i10)')) 
             cpv  = sc + '_calc' + ix + '.CALC'
-;            print, i, ' ', ax, cx, ix, tx
+            ;print, i, ' ', ax, cx, ix, tx
             calc = ax + '-' + cx + '*(A/' + tx + ')'
             calc = strcompress(calc,/remove_all)
-            j    = ca_put(cpv, calc)
+            j    = caput(cpv, calc)
+            ;print, 'caput ', cpv, ' -> ', calc
         endfor
+        ;print, 'collect offset done'
 
         Widget_Control, event.top, /destroy
 ;done: return scaler mode, count time, and re-open shutter
-        t    = ca_put(sc + '.CONT', save_mode)
-        t    = ca_put(sc + '.TP'  , save_time)
-        t    = ca_put((*p).sh_open, 1)
+        t    = caput(sc + '.CONT', save_mode)
+        t    = caput(sc + '.TP'  , save_time)
+        t    = caput((*p).sh_open, 1)
         (*p).scaler_obj->start, 1
         (*p).scaler_obj->wait        
         obj_destroy, (*p).scaler_obj

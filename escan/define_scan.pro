@@ -10,7 +10,8 @@ sc1  = (*p).es->get_param('scan1')
 
 uva  = strmid(uval, 0, strlen(uval)-1)
 dnum = 0
-if ((uva eq 'name') or (uva eq 'trig') or (uva  eq 'count') or $
+
+if ((uva eq 'name') or (uva eq 'trig') or (uva  eq 'count') or (uva eq 'nelems') or $
     (uva eq 'prefix') or (uva  eq 'use') or (uva  eq 'mca')) then begin
     dnum = fix(strmid(uval, strlen(uval)-1, strlen(uval)))
     uval = uva
@@ -57,7 +58,7 @@ case uval of
     end
     'nelems': begin
         Widget_Control, (*p).wid.delems[dnum], get_value=t
-        dgr.max_elems[dnum] = strtrim(t,2)
+        dgr.max_elems[dnum] = fix(strtrim(t,2))
     end
     'count':  begin
         Widget_Control, (*p).wid.dcount[dnum], get_value=t
@@ -143,10 +144,10 @@ col     = Widget_Base(base,/col,/frame)
 tt      = Widget_Base(col,/row)
 xx       = Widget_Label(tt, xsize = 130, value = 'Detector Group') 
 x       = Widget_Label(tt, xsize = 130, value = 'Prefix') 
-x       = Widget_Label(tt, xsize = 130, value = 'Trigger') 
-x       = Widget_Label(tt, xsize = 130, value = 'Counter') 
-x       = Widget_Label(tt, xsize =  80, value = '# Elements') 
-x       = Widget_Label(tt, xsize =  50, value = 'MCA?')
+x       = Widget_Label(tt, xsize = 100, value = 'Trigger') 
+x       = Widget_Label(tt, xsize =  80, value = 'Counter') 
+x       = Widget_Label(tt, xsize =  90, value = '# Elements') 
+x       = Widget_Label(tt, xsize =  60, value = 'MCA?')
 x       = Widget_Label(tt, xsize =  50, value = 'Use?')
 
 uva     = ['name', 'prefix', 'trig', 'count', 'nelems', 'mca', 'use']

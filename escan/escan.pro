@@ -1,7 +1,12 @@
+; BUGS:
+;   comes up with wrong / unknown state for relative/absolute
+; 
 function update_scan_settings, w, sc, i
 ;  update the start, stop, step, npts settings for a scan segments
-; 
-   sc.npts[i]   = npts_calc(sc.start[i],sc.stop[i],sc.step[i],step_out)
+;
+
+   mx = max_scanpts(sc.scanpv)
+   sc.npts[i]   = npts_calc(sc.start[i],sc.stop[i],sc.step[i],step_out,mx)
    sc.step[i]   = step_out
    Widget_Control, w.start[i], set_value = f2a(sc.start[i])
    Widget_Control, w.stop[i],  set_value = f2a(sc.stop[i] )
@@ -14,7 +19,7 @@ function set_sensitive_regions, w, nregs
 ;
 ;  set sensitivity of scan segment regions
 ;
-; print, ' Set Sensitive Regions ', w, nregs
+;  print, ' Set Sensitive Regions ', w, nregs
 if (nregs gt 1) then begin
     for i = 0, nregs-1 do begin
         Widget_Control, w.start[i],  SENSITIVE = 1
@@ -60,14 +65,23 @@ pro exafs_event, event
 Widget_Control, event.id,  get_uval = uval
 ; print, ' exafs_event: scan = <',_scan,'>  uval = ', uval
 wid     = (*p).escan
+MAX_SCAN_POINTS = max_scanpts(sc.scanpv)
+
 case uval of
     'e0': begin
         Widget_Control, wid.e0, get_value = t
         sc.params[0] = strtrim(t,2)
     end
+    'kwt_pow': begin
+        sc.params[1] = fix(event.index)
+    end
+    'kwt_end': begin
+        Widget_Control, wid.kwt_end, get_value = t
+        sc.params[2] = strtrim(t,2)
+    end
     'nregs': begin
         Widget_Control, wid.nregs, get_value = t
-        nregs =  ((fix(strtrim(t[0],2)) > 1) < 3)
+        nregs =  ((fix(strtrim(t[0],2)) > 1) < 4)
         Widget_Control, wid.nregs, set_value = f2a(nregs)
         sc.n_regions = nregs
         u  = (*p).es->set_param(_scan, sc)
@@ -153,6 +167,8 @@ case uval of
         Widget_Control, wid.stop[2],  get_value = t
         sc.stop[2]  = a2f(t)
         sc          = update_scan_settings(wid, sc, 2)
+        ;sc.start[3] = sc.stop[2]
+        ;sc          = update_scan_settings(wid, sc, 3)
     end
     'step2': begin
         Widget_Control, wid.step[2], get_value = t
@@ -189,8 +205,40 @@ case uval of
         Widget_Control, wid.time[2], get_value = t
         sc.time[2] = a2f(t)
     end
+
+;
+    'time3': begin
+        Widget_Control, wid.time[3], get_value = t
+        sc.time[3] = a2f(t)
+    end
+    'start3': begin
+        Widget_Control, wid.start[3], get_value = t
+        sc.start[3] = a2f(t)
+        sc.stop[2]  = sc.start[3]
+        sc          = update_scan_settings(wid, sc, 3)
+        sc          = update_scan_settings(wid, sc, 2)
+    end
+    'stop3': begin
+        Widget_Control, wid.stop[3], get_value = t
+        sc.stop[3]  = a2f(t)
+        sc = update_scan_settings( wid, sc, 3)
+    end
+    'step3': begin
+        Widget_Control, wid.step[3], get_value = t
+        sc.step[3] = a2f(t)
+        sc = update_scan_settings( wid, sc, 3)
+    end
+    'npts3': begin
+        Widget_Control, wid.npts[3], get_value = t
+        sc.npts[3] = (( fix(strtrim(t,2)) > 2) < MAX_SCAN_POINTS)
+        sc.step[3] = (sc.start[3] - sc.stop[3])/(sc.npts[3]  - 1.00)
+        sc = update_scan_settings( wid, sc, 3)
+    end
+
+
     'units0': print, " K steps ?? No WAY! "
     'units1': print, " K steps ?? No WAY! "
+    'units3': print, " K steps ?? No WAY! "
     'units2': begin
         ; print, "kspace: ",  event.index
         if (event.index eq 1) then begin ;  choose 'Ang^-1'
@@ -218,6 +266,7 @@ case uval of
         endelse
         sc         = update_scan_settings(wid, sc, 2)
     end
+
     else: print, 'exafs_event: unknown!', uval
 endcase
 u = (*p).es->set_param(_scan, sc)
@@ -229,6 +278,8 @@ pro motor_event, event
 Widget_Control, event.id,  get_uval = uval
 
 wid  = (*p).mscan
+
+MAX_SCAN_POINTS =  max_scanpts(sc.scanpv)
 
 case uval of
     'use_rel': begin
@@ -252,7 +303,7 @@ case uval of
     end
     'nregs': begin
         Widget_Control, wid.nregs, get_value = t
-        nregs =  ((fix(strtrim(t[0],2)) > 1) < 3)
+        nregs =  ((fix(strtrim(t[0],2)) > 1) < 4)
         Widget_Control, wid.nregs, set_value = f2a(nregs)
         sc.n_regions = nregs
         u  = (*p).es->set_param(_scan, sc)
@@ -278,10 +329,14 @@ case uval of
         if ((val le motor.hlim)  and (val ge motor.llim)) then begin
             s    = caput(pv + '.VAL', val)
             dmov = 0
+            cx   = 0
             while (dmov eq 0) do begin
                 s = caget(pv + '.DMOV', dmov)
                 s = caget(rbv, val)
                 Widget_Control, wid.cur_pos, set_value = f2a(val)
+                wait, 0.005
+                cx =cx + 1
+                if (cx ge 1000) then dmov = 1
             endwhile
             motor.curpos = val
             u  = (*p).es->set_motor(imotor, motor)
@@ -381,6 +436,38 @@ case uval of
         sc.step[2] = (sc.start[2] - sc.stop[2])/(sc.npts[2]  - 1.00)
         sc = update_scan_settings( wid, sc, 2)
     end
+;
+    'time3': begin
+        Widget_Control, wid.time[3], get_value = t
+        sc.time[3] = a2f(t)
+    end
+    'start3': begin
+        Widget_Control, wid.start[3], get_value = t
+        start       = a2f(t)
+        sc.start[3] = check_motor_limits(start,sc.is_rel,motor)
+        sc          = update_scan_settings( wid, sc, 3)
+        sc.stop[2]  = sc.start[3]
+        sc          = update_scan_settings(wid, sc, 2)
+    end
+    'stop3': begin
+        Widget_Control, wid.stop[3], get_value = t
+        stop       = a2f(t)
+        sc.stop[3] = check_motor_limits(stop,sc.is_rel,motor)
+        sc = update_scan_settings( wid, sc, 3)
+    end
+    'step3': begin
+        Widget_Control, wid.step[3], get_value = t
+        sc.step[3] = a2f(t)
+        sc = update_scan_settings( wid, sc, 3)
+        ; print, ' motor step2 == ', sc.step[2], sc.npts[2]
+    end
+    'npts3': begin
+        Widget_Control, wid.npts[3], get_value = t
+        sc.npts[3] = (( fix(strtrim(t,2)) > 2) < MAX_SCAN_POINTS)
+        sc.step[3] = (sc.start[3] - sc.stop[3])/(sc.npts[3]  - 1.00)
+        sc = update_scan_settings( wid, sc, 3)
+    end
+
     'units': x = 1
     'llim': x = 1
     'hlim': x = 1
@@ -395,7 +482,7 @@ pro escan_fill_screen, p
 ;
 ; fill in escan screens from  data structure
 ; 
-print, 'escan_fill '
+; print, 'escan_fill '
 cur_dim    = (*p).es->get_param('dimension')
 cur_scan   = (*p).es->get_param('current_scan')
 allmotors  = (*p).es->get_param('motors')
@@ -437,8 +524,8 @@ for i = 0, 2 do begin
     Widget_Control, wid.start[i], set_value=f2a(x_start[i,0])
     Widget_Control, wid.stop[i],  set_value=f2a(x_stop[i,0])
     Widget_Control, wid.step[i],  set_value=f2a(x_step[i,0])
-    Widget_Control, wid.npts[i],  set_value=f2a(x_npts[i,0])
-    Widget_Control, wid.time[i],  set_value=f2a(x_time[i,0])
+    Widget_Control, wid.npts[i],  set_value=f2a(x_npts[i])
+    Widget_Control, wid.time[i],  set_value=f2a(x_time[i])
 endfor
 if (cur_type eq 0) then begin
     Widget_Control, (*p).mscan.motor,    set_DROPLIST_SELECT= sc.drives[0]
@@ -453,6 +540,10 @@ endif else  begin
     Widget_Control, (*p).form.nb[0], map=0
     Widget_Control, (*p).form.nb[1], map=1
     Widget_Control, (*p).escan.units[2], SET_DROPLIST_SELECT = x_isk[2]
+    Widget_Control, (*p).escan.kwt_pow,  set_droplist_select= fix(sc.params[1])
+    tx_end = x_time[2]
+    if (abs(sc.params[2]) ge 0.01) then tx_end = abs(sc.params[2])
+    Widget_Control, (*p).escan.kwt_end,  set_value=f2a(tx_end)
 endelse
 
 for i = 0, 2 do  sc  = update_scan_settings(wid, sc, i)
@@ -575,24 +666,16 @@ case uval of
     end
     'load': begin
         x   = (*p).es->load_to_crate()
-        sc  = (*p).es->get_param(_scan)
+        tim = (*p).es->get_scan_param(0,'time_est')
         dim = (*p).es->get_param('dimension')
-        tx   = fltarr(3)
-        np   = intarr(3)+1
-        for i = 0, dim-1 do begin
-            x  = (*p).es->get_param('scan'+string(i+1,format='(i1.1)'))
-            tx(i) = x.time_est
-            np(i) = x.npts_total
-        endfor
-        total_time = tx(2) + np(2) * ( tx(1) +  np(1) * tx(0) ) 
-        tm1 = sec2hms(total_time)
-        print, 'time estimate: ', tm1
-        widget_control, (*p).form.time_est, set_value = tm1
-        x  = (*p).es->set_param('total_time',total_time)
+        ; note additional 5 seconds perl row for 2D scans == reset time
+        if (dim eq 2) then  tim = (tim + 5.0) * (*p).es->get_scan_param(1,'npts_total')
+        x   = (*p).es->set_param('total_time',tim)
+        widget_control, (*p).form.time_est, set_value = sec2hms(tim)
     end
-;    'scan_view': begin
-;     scan_viewer, (*p).es 
-;    end
+    'scan_view': begin
+        sv  = obj_new('scanviewer',escan=(*p).es)
+    end
     else: print , ' unknown event ', uval
 endcase
 return
@@ -601,12 +684,16 @@ end
 
 ;
 ;------------------------------------------------------------------
-pro escan, scan_file=scan_file, plot_size=plot_size
+pro escan, scan_file=scan_file, prefix=prefix, plot_size=plot_size, no_gcd=no_gcd
 ;
-;  
-print, ' This is escan v 1.0'
+;
+if (keyword_set(no_gcd) eq 0 ) then begin
+   dir = dialog_pickfile(/dir)
+   if dir then cd, dir
+endif
+
 N_SCAN_TYPES = 2
-N_REG        = 5
+N_REG        = 3
 scan_types   = ['Motor', 'EXAFS']
 scan_nums    = ['Scan 1', 'Scan 2', 'Scan 3']
 rel_choices  = ['Absolute', 'Relative']
@@ -615,11 +702,15 @@ cur_dim      = 0
 ;
 ; define and setup epics_scan object
 s_file   = 'default.scn'
+pref     = '13IDE:'
 if (keyword_set(scan_file) ne 0 ) then s_file   = scan_file
+if (keyword_set(prefix)    ne 0 ) then pref     = prefix
 
 plotsize = 800
 if (keyword_set(plot_size) ne 0 ) then plotsize = plot_size
-es       = obj_new('epics_scan', scan_file = s_file, /use_dialog)
+es       = obj_new('epics_scan', scan_file = s_file, prefix=pref, /use_dialog)
+
+print, ' This is escan v 1.0, using IOC ',  es->get_param('prefix')
 
 datafile = es->get_param('datafile')
 motor    = es->get_param('motors')
@@ -643,20 +734,22 @@ _energy  = es->get_motor(motor.e_drive)
 cur_type = 0
 cx_type  = es->get_scan_param(0, 'type')
 if (cx_type eq scan_types[1]) then cur_type = 1
-; print, '  scan type: ', cx_type , ' scan_types[1] = ', scan_types[1], cur_type
+
 
 ;--------------------------------------------------------------------------------
 ; nbframe holds the frame ids for the 2 'notebook frames'
 nb     = lonarr(N_SCAN_TYPES)
 arr0   = lonarr(N_REG)
+kweights=['0','1','2','3']
 form   = {scan_num:scan_nums[0], data_file_name:0L, time_est:0L, $
           scan_type:scan_types[0], scan_dim:scan_dims[0], $
           cur_dim:1L, nb:nb}
+
 mscan  = {motor:m_names[0], cur_pos:0L,  llim:0L, hlim:0L, e0:0L,$
           nregs:1L,  is_rel:rel_choices[1], units:arr0, $
           start:arr0,  stop:arr0,  step:arr0,  npts:arr0, time:arr0}
 escan  = {e0:0L,           cur_pos:0L, motor:0L, llim:0L, hlim:0L, $
-          nregs:3L,  is_rel:rel_choices[1], units:arr0, $
+          nregs:3L,  is_rel:rel_choices[1], units:arr0, kwt_pow:'0', kwt_end:0L,$ 
           start:arr0,  stop:arr0,  step:arr0,  npts:arr0, time:arr0 }
 
 info   = {es:es, form:form, mscan:mscan, escan:escan}
@@ -676,6 +769,8 @@ x      = Widget_Button(menu, value= 'Setup ...',            uval= 'setup')
 x      = Widget_Button(menu, value= 'Select Detectors ...', uval= 'define_dets') 
 x      = Widget_Button(menu, value= 'Collect Offsets ...',  uval= 'collect_offs') 
 ; x      = Widget_Button(menu, value= 'Define Motors ...',    uval= 'define_mots') 
+
+
 
 ; menu   = Widget_Button(mbar, value= 'Help', /menu, /help)
 ; x      = Widget_Button(menu, value= 'Help on EPICS SCAN',  uval= 'escan_help')
@@ -705,8 +800,7 @@ x_npts  = info.es->get_scan_param(0, 'npts')
 x_time  = info.es->get_scan_param(0, 'time')
 
 info.escan.nregs = info.es->get_scan_param(0, 'n_regions')
-
-
+info.escan.nregs = 3; info.es->get_scan_param(0, 'n_regions')
 
 ;
 OptBase =  Widget_Base(mframe, /frame)
@@ -734,20 +828,20 @@ fr02  = Widget_Base(info.form.nb[0], /row )
 info.mscan.cur_pos = CW_Field(fr02,   title = 'Current Position', $
                              xsize=11, uval = 'cur_pos', $
                              value = f2a(_motor.curpos), $
-                             /return_events, /floating)
+                             /return_events)
 
 info.mscan.llim = CW_Field(fr02,  title = 'Limits : Low ', $
                           xsize = 11, uval = 'llim', /noedit, $
                           value = f2a(_motor.llim), $
-                          /return_events, /floating)
+                          /return_events)
 info.mscan.hlim = CW_Field(fr02,  title = ' : High ', $
                            xsize = 11, uval = 'hlim', /noedit, $
                            value = f2a(_motor.hlim), $
-                          /return_events, /floating)
+                          /return_events)
 
 fr03   = Widget_Base(info.form.nb[0], /col,/frame)
 fr04   = Widget_Base(fr03, /row)
-ts  = 85
+ts  = 79
 X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Region  ' )
 X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Start   ' )
 X = Widget_Label(fr04, XSIZE=  ts,  VALUE = 'Stop    ' )
@@ -765,19 +859,19 @@ for i = 0, 2 do  begin
     uvs  = uv_ + strtrim(string(i),2)
     info.mscan.start[i] = CW_FIELD(fr05,  title= ' ', XSIZE = 9,  uvalue = uvs[0], $
                                    value = f2a(x_start[i,0]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.mscan.stop[i]  = CW_FIELD(fr05,  title= ' ', XSIZE = 9,  uvalue = uvs[1], $
                                    value = f2a(x_stop[i,0]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.mscan.step[i]  = CW_FIELD(fr05,  title= ' ', XSIZE = 9,  uvalue = uvs[2], $
                                    value = f2a(x_step[i,0]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.mscan.npts[i]  = CW_FIELD(fr05,  title= ' ', XSIZE = 9,  uvalue = uvs[3], $
                                    value = f2a(x_npts[i]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.mscan.time[i]  = CW_FIELD(fr05,  title= ' ', XSIZE = 9,  uvalue = uvs[4], $
                                    value = f2a(x_time[i]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.mscan.units[i] = Widget_Label(fr05, uval = 'units', $ 
                                value= strtrim(_motor.units,2) )
 endfor
@@ -790,7 +884,7 @@ info.form.nb[1] = Widget_Base(OptBase, /col, MAP = 0,event_pro='exafs_event')
 fr11           =  Widget_Base(info.form.nb[1],  /row)
 x              =  Widget_Label(fr11,  value = ' EXAFS ')
 
-info.escan.e0  =  CW_FIELD(fr11, /FLOATING,  /ROW,  XSIZE = 9,  $
+info.escan.e0  =  CW_FIELD(fr11,  /ROW,  XSIZE = 9,  $
                            TITLE = ' E0',  UVALUE = 'e0', $
                            VALUE = f2a(info.escan.e0), $
                            /return_events)
@@ -812,13 +906,13 @@ fr12  = Widget_Base(info.form.nb[1], /row )
 ; info.escan.cur_pos = CW_Field(fr12,   title = 'Current Energy', $
 ;                              xsize = 12, uval = 'cur_pos', $
 ;                              value = f2a(_energy.curpos), $
-;                              /return_events, /floating)
+;                              /return_events)
 
 fr12  = Widget_Base(info.form.nb[1], /row)
 fr13  = Widget_Base(info.form.nb[1], /col,/frame)
 fr14  = Widget_Base(fr13, /row)
 
-ts = 85
+ts = 79
 X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Region  ' )
 X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Start   ' )
 X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Stop    ' )
@@ -829,6 +923,7 @@ X = Widget_Label(fr14, XSIZE=  ts,  VALUE = 'Units   ' )
 
 etitle   = ['Pre-Edge', 'XANES', 'EXAFS', 'EXTRA']
 k_spaces = ['eV', STRING(197B)+'^(-1)']
+kweights = ['0','1','2','3']
 uv_      = ['start',  'stop', 'step', 'npts', 'time','units'] 
 for i = 0, 2 do  begin
     fr15 = Widget_Base(fr13, /row)
@@ -836,20 +931,20 @@ for i = 0, 2 do  begin
     uvs  = uv_ + strtrim(string(i),2)
     info.escan.start[i] = CW_FIELD(fr15,  title= ' ', XSIZE = 9,  uvalue = uvs[0], $
                                    value = f2a(x_start[i,0]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.escan.stop[i]  = CW_FIELD(fr15,  title= ' ', XSIZE = 9,  uvalue = uvs[1], $
                                    value = f2a(x_stop[i,0]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.escan.step[i]  = CW_FIELD(fr15,  title= ' ', XSIZE = 9,  uvalue = uvs[2], $
                                    value = f2a(x_step[i,0]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.escan.npts[i]  = CW_FIELD(fr15,  title= ' ', XSIZE = 9,  uvalue = uvs[3], $
                                    value = f2a(x_npts[i]), $
-                                   /return_events, /floating)
+                                   /return_events)
     info.escan.time[i]  = CW_FIELD(fr15,  title= ' ', XSIZE = 9,  uvalue = uvs[4], $
                                    value = f2a(x_time[i]), $
-                                   /return_events, /floating)
-    if (i le 1) then begin
+                                   /return_events)
+    if (i ne 2) then begin
         X    = Widget_Label(fr15, XSIZE= 30,  VALUE = 'eV', /ALIGN_LEFT)
         info.escan.units[i]  = Widget_Base(fr15, /row, Map = 0)
     endif else begin
@@ -857,13 +952,26 @@ for i = 0, 2 do  begin
                                                uvalue = uvs[5],    title = ' ')
         ch = es->get_scan_param(0, 'is_kspace')
         Widget_Control, info.escan.units[i], SET_DROPLIST_SELECT = ch[i]
+
     endelse
 
 endfor
 
+fr15 = Widget_Base(fr13, /row)
+X    = Widget_Label(fr15, XSIZE= 240,  VALUE = 'K-weight collection time:')
+info.escan.kwt_pow  = Widget_Droplist(fr15, value = kweights, $
+                                      uvalue = 'kwt_pow',    title = ' k-weight: ')
+info.escan.kwt_end  = CW_FIELD(fr15,  title= ' Max Time: ', $
+                               XSIZE = 9,  uvalue = 'kwt_end', value = f2a(x_time[2]), $
+                               /return_events)
+
 ; map the current scan type!
 Widget_Control, info.form.nb[cur_type], map=1
 Widget_Control, info.escan.e0,      set_value = f2a(sc.params[0])
+Widget_Control, info.escan.kwt_pow,  set_droplist_select= fix(sc.params[1])
+
+xxx =f2a(sc.params[2])
+if (xxx ge 0.01) then Widget_Control, info.escan.kwt_end,  set_value = xxx
 
 u = set_sensitive_regions(info.mscan,sc.n_regions)
 u = set_sensitive_regions(info.escan,sc.n_regions)
@@ -873,12 +981,14 @@ u = set_sensitive_regions(info.escan,sc.n_regions)
 ; Bottom Frame:
 base1  = Widget_Base(mframe, /col, /frame)
 base2  = Widget_Base(base1,/row)
-X      = Widget_Button(base2,  value = 'Load Scan',  uval='load')
-; X      = Widget_Button(base2,  value = 'Scan Viewer', uval='scan_view')
-X      = Widget_Button(base2,  value = 'EXIT ',      uval='exit')
+X      = Widget_Button(base2,  value = 'Load Scan',   uval='load')
+X      = Widget_Button(base2,  value = 'Scan Viewer', uval='scan_view')
+X      = Widget_Button(base2,  value = 'EXIT ',       uval='exit')
 
 X      = Widget_Label(base2,  value = 'Estimated time:')
 info.form.time_est = Widget_Label(base2,  xsize=190,value = '            ')
+
+; print, 'display built'
 
 sv    = obj_new('scanviewer',escan=es,plot_size=plotsize)
 c     = es->get_param('current_scan')
@@ -894,6 +1004,8 @@ p_info = ptr_new(info,/no_copy)
 Widget_Control,    main, set_uval=p_info
 Widget_Control,    main, /realize
 xmanager, 'escan', main, /no_block
+;print, 'ready to go'
 return
 end
+
 

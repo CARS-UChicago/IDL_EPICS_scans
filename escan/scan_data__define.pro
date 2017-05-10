@@ -1,4 +1,4 @@
- ;
+;
 ; Scan Data Class: read and manipulate epics scan data and maps
 ; 
 ; function scan_data::match_detector_name
@@ -22,9 +22,10 @@
 ; pro      scan_data::set_plot_colors
 ; function scan_data::get_x
 ; function scan_data::get_y
-; pro      scan_data::help
+; pro      scanta::help
 ; pro      scan_data::show_params
 ; pro      scan_data::show_detectors
+; function scan_data::detector_list
 ; function scan_data::init
 
 function scan_data::match_detector_name, str, strict=strict, show_error=show_error
@@ -51,7 +52,7 @@ function scan_data::match_detector_name, str, strict=strict, show_error=show_err
 ;                     (the default), the first close match is chosen.
 ;
 ;
-; EXAMPLE:            d = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d = obj_new('scan_data',file='scan_file_001.dat')
 ;                     n = d->match_detector_name('Cu')
 ;
 ; MODIFICATION HISTORY:  2001-aug-05  m newville
@@ -80,11 +81,21 @@ if (keyword_set(strict) eq 0) then begin
     for i = 0, n - 1 do begin
         j = strpos(strlowcase((*self.det_names)[i]), s)
         if (j ge 0) then begin
-            print, s,  ' is sort of like ', (*self.det_names)[i]
             return, i
         endif
     endfor
+
+    for i = 0, n - 1 do begin
+        j = strpos(strlowcase((*self.det_desc)[i]), s)
+        if (j ge 0) then begin
+            return, i
+        endif
+    endfor
+
 endif
+
+
+
 
 if (keyword_set(show_error) ne 0) then begin
     print, " can't find  detector named ", str
@@ -109,7 +120,7 @@ function scan_data::get_map, name=name, index=index, $
 ;                     index      integer index for detector array to use
 ;                     use_sum    flag to use summed detectors [default]
 ;                     use_raw    flag to use raw (individual) detectors
-;                     norm       norm of detector group for normalization
+;                     norm       name  of detector group for normalization
 ;                     inorm      index of detector for normalization
 ;
 ; OUTPUTS:            2d data for requested map
@@ -129,7 +140,7 @@ function scan_data::get_map, name=name, index=index, $
 ; 
 ;
 ;
-; EXAMPLE:            d     = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d     = obj_new('scan_data',file='scan_file_001.dat')
 ;                     map1  = d->get_map(name='Cu')
 ;                     map2  = d->get_map(name='As', norm='i0')
 ;                     map23 = d->get_map(index=23, /use_raw)
@@ -166,6 +177,7 @@ if ((uname eq '') and (uindex eq -1)) then begin
     return, empty
 endif else if (uname ne '') then begin
     uindex = self->match_detector_name(uname,/show_error)
+    print , 'Detector name=', uname, ' -> index=', uindex
     if (uindex lt 0) then return, empty
 endif
 
@@ -176,6 +188,7 @@ endif else if (usum eq 1) then begin
     map = (*self.sums)[*,*,uindex]
     stitle = (*self.det_names)[uindex]
 endif
+
 ;
 ; determine normalization array
 if (do_norm eq 1) then begin
@@ -217,7 +230,7 @@ pro      scan_data::show_map, name=name,  _extra=extra
 ; PROCEDURE:          see notes in scan_data::get_map -- all keywords are 
 ;                     the same as for that function
 ;
-; EXAMPLE:            d     = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d     = obj_new('scan_data',file='scan_file_001.dat')
 ;                     d->show_map, name='Cu'
 ;                     d->show_map, name='As', norm='i0'
 ;                     d->show_map, index=23, /use_raw
@@ -365,7 +378,7 @@ pro      scan_data::show_correl, x=x, y=y, _extra=extra
 ;
 ; PROCEDURE:          this uses only summed detectors given by name
 ;
-; EXAMPLE:            d     = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d     = obj_new('scan_data',file='scan_file_001.dat')
 ;                     d->show_correl, x='Cu', y='Fe'
 ;
 ; MODIFICATION HISTORY:  2001-aug-05  m newville
@@ -380,6 +393,7 @@ lab2 = self.subtitle
 
 self.subtitle=''
 if ((map1(0,0) ne -99)  or (map1(1,0) ne -99) or (n_elements(map1) gt 4)) then begin
+    wset
     plot, map1, map2, psym=1, xtitle=lab1, ytitle=lab2, title=self.filename, $
       back=set_color('white'), color=set_color('black'), _extra=extra
 endif
@@ -408,7 +422,7 @@ function scan_data::get_orig_detector_list, name=name, index=index
 ;
 ; PROCEDURE:          this uses only summed detectors given by name or index
 ;
-; EXAMPLE:            d  = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d  = obj_new('scan_data',file='scan_file_001.dat')
 ;                     o  = d->get_orig_detector_list(name='Cu')
 ;
 ; MODIFICATION HISTORY:  2001-aug-05  m newville
@@ -426,11 +440,11 @@ endif
 
 if (uindex lt 0) then return, uindex
 
-n   = n_elements((*self.det_orig)) 
+n   = n_elements((*self.sums_orig)) 
 tmp = intarr(n) - 1
 cnt = 0
 for i = 0, n - 1 do begin
-    if ((*self.det_orig)[i] eq uindex) then begin
+    if ((*self.sums_orig)[i] eq uindex) then begin
         tmp[cnt] = i
         cnt = cnt + 1
     endif
@@ -456,7 +470,7 @@ function scan_data::get_detector_list, name=name, index=index
 ;
 ; PROCEDURE:          this uses only summed detectors given by name or index
 ;
-; EXAMPLE:            d  = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d  = obj_new('scan_data',file='scan_file_001.dat')
 ;                     lis= d->get_detector_list(name='Cu')
 ;
 ; MODIFICATION HISTORY:  2001-aug-05  m newville
@@ -474,11 +488,11 @@ endif
 
 if (uindex lt 0) then return, uindex
 
-n   = n_elements((*self.det_list)) 
+n   = n_elements((*self.sums_list)) 
 tmp = intarr(n) - 1
 cnt = 0
 for i = 0, n - 1 do begin
-    if ((*self.det_list)[i] eq uindex) then begin
+    if ((*self.sums_list)[i] eq uindex) then begin
         tmp[cnt] = i
         cnt = cnt + 1
     endif
@@ -507,7 +521,7 @@ function scan_data::set_detector_list, name=name, index=index, list=list
 ; PROCEDURE:          the specified list is used for the sum of grouped detectors.
 ;                     if any element in the list is less than 0, that element is ignored
 ;
-; EXAMPLE:            d  = obj_new('scan_data','scan_file_001.dat')
+; EXAMPLE:            d  = obj_new('scan_data',file='scan_file_001.dat')
 ;                     old= d->get_detector_list(name='Cu')
 ;                     new= old
 ;                     new[3] = -1  ; remove detector 3 from the list
@@ -534,12 +548,12 @@ endif else if (n_elements(list)   le 0)  then begin
     return, -1
 endif
 
-n     = n_elements((*self.det_list)) 
+n     = n_elements((*self.sums_list)) 
 ; print, 'unindex = ', uindex
 ;
 ; unset all detector elements for this sum
 for j = 0, n - 1 do begin
-    if ( (*self.det_list)[j] eq uindex ) then (*self.det_list)[j] = -1
+    if ( (*self.sums_list)[j] eq uindex ) then (*self.sums_list)[j] = -1
 endfor
 
 help, (*self.sums), uindex
@@ -552,7 +566,7 @@ endelse
 for i = 0, n_elements(list) - 1 do begin
     j = list[i]
     if (j ge 0) then begin
-        (*self.det_list)[j] = uindex
+        (*self.sums_list)[j] = uindex
         if (self.dimension eq 1) then begin
             (*self.sums)[*,uindex]   = (*self.sums)[*,uindex]    + (*self.raw)[*,j] 
         endif else begin
@@ -728,7 +742,6 @@ function scan_data::filetype, file
 on_ioerror, not_cdf
 u = ncdf_open(file,/nowrite)
 retval = -2
-
 on_ioerror, not_epics_cdf
 
 at = ncdf_attinq(u, 'title', /global)
@@ -747,7 +760,8 @@ on_ioerror, not_ascii
 
 openr, lun, file, /get_lun
 s = ''
-readf, lun, s, format='(a16)'
+readf, lun, s, format='(a)'
+if strlen(s) le 3 then readf,lun, s, format='(a)'
 retval = -1
 if (strpos(s,'Epics Scan') ge 0) then retval = 1
 close, lun
@@ -799,11 +813,47 @@ if ((n_elements(file) eq 0) or  (keyword_set(help) ne 0)) then begin
 endif
 ;
 
+print, 'read Data file ', file 
 filetype  = self->filetype(file)
-print, ' file type = ' , filetype
-case filetype of
+self.filename    = file
+
+ftype = filetype
+on_ioerror, io_error
+
+if (filetype eq 1) then begin ; request ascii file
+    mtime1 = file_mod_time(file)
+    mtime2 = mtime1
+    tmpf   = file + '.ncd'
+    tx1    = findfile(tmpf)
+    if (strlen(tx1) ne 0) then    mtime2   = file_mod_time(tmpf)
+    if (mtime2 gt mtime1) then begin
+        ftype = 2
+        file  = file + '.ncd'
+        ; print, ' NOTE: using newer nc file: ', file
+    endif
+endif else begin                ; request nc file
+
+    mtime2 = file_mod_time(file)
+    mtime1 = mtime2
+    lx     = strlen(file)
+    if (strmid(file,lx-3,lx) eq '.ncd') then begin
+        tmpf = strmid(file,0,lx-3)
+        tx1  = findfile(tmpf)
+        if (strlen(tx1) ne 0) then  mtime1  = file_mod_time(tmpf)
+        if (mtime1 gt mtime2) then begin
+            ftype = 1
+            file  = tmpf
+            print, ' NOTE: using newer ascii file: ', file
+        endif
+    endif
+endelse
+
+file = strtrim(file,2)
+case ftype of
     1: begin
         retval = self->read_ascii_data_file(file)
+        ;; print, ' -- > saving netcdf!'
+        ;; self->save_netcdf
     end
     2: begin
         retval = self->read_netcdf_data_file(file)
@@ -819,6 +869,10 @@ endif else begin
 endelse
 
 return, retval
+
+io_error:
+retval = -1
+return, retval
 end
 
 
@@ -829,9 +883,10 @@ function scan_data::read_ascii_data_file, file
 @scan_dims
 
 M_GROUPS = 50
-MPVLIST  = 64
+MPVLIST  = 128
 MTITLES  = 16
-MDIM     = 500
+MROW     = 1624
+MCOL     = 1024
 retval   = -1
 
 ;
@@ -847,14 +902,15 @@ endif
 str     = '; '
 print, format='(3a,$)', 'opening file ', file, ' ... '
 
-filetype   = self->filetype(file)
-if (filetype ne 1) then return, retval
+; filetype   = self->filetype(file)
+; if (filetype ne 1) then return, retval
+on_ioerror, read_done
 
 openr, lun, file, /get_lun
-tmp_x      = fltarr(MDIM, MAX_POS)
-tmp_det    = fltarr(MDIM, MDIM, MAX_DET)
+tmp_x      = fltarr(MROW, MAX_POS)
+tmp_det    = fltarr(MROW, MCOL, MAX_DET)
 vars       = fltarr(MAX_POS+MAX_DET)
-tmp_y      = fltarr(MDIM)
+tmp_y      = fltarr(MCOL)
 det_name   = strarr(M_GROUPS)
 pos_name   = strarr(MAX_POS)
 pv_list    = strarr(MPVLIST)
@@ -863,7 +919,7 @@ ypos       = ''
 ypv        = ''
 det_desc   = strarr(MAX_DET)
 det_pv     = strarr(MAX_DET)
-det_list   = intarr(MAX_DET)
+sums_list   = intarr(MAX_DET)
 group_list = strarr(M_GROUPS)
 Det_String = strarr(m_groups)
 
@@ -884,8 +940,11 @@ dimen      = 2
 ;            3  scan began at' to ;  'scan ended at'
 ;            4  column labels
 ;            5  '-----------------'
+;            6  ';2D': ignore
 ;
 read_mode  = 0 
+tmpline    = ''
+ixline     = 0
 ; 
 print, 'reading ...'
 while not (eof(lun)) do begin
@@ -916,10 +975,31 @@ while not (eof(lun)) do begin
         readf, lun, str
         npos = npos + 1
         ndet = ndet + 1
-        ; print, ' npos , ndet = ', npos, ndet
+        print, ' npos , ndet = ', npos, ndet
         vars = fltarr(npos+ndet)
         goto, next_line
     endif
+
+    if (read_mode eq 6) then begin ; read ';2D', 
+       ; print, ' read mode = 6 ',  string
+       nrow = nrow + 1
+        if ((nrow gt 5) and ( ((nrow) mod 10) eq 0)) then print, ";"
+        print, format='(a,i3,$)', '  ' , nrow
+        sx = str_sep(strtrim(tmpline,2), ' ' )
+        tmp_y[nrow] = sx[1]
+        npts_old   = npts
+        npts       = -1
+        isx  = strpos(string,'ended at time:')
+        if (isx gt 1) then  $
+          self.stop_time = strtrim(strmid(string,isx+15,strlen(string)),2)
+;         print, ' scan end = ', self.stop_time
+
+        readf, lun, str
+        readf, lun, str
+        read_mode = 5
+        goto, next_line
+    endif
+
     if (read_mode eq 0) then begin ; front
         if (first_line eq 1) then begin
             stmp = strmid(string, 0, 12)
@@ -978,7 +1058,7 @@ while not (eof(lun)) do begin
         readf, lun, string
     endif else if (read_mode eq 4)  then begin ; column labels
 ; reading list of positioner/detectors for 1d scan
-        ;print, ' mode 4 ', npos, ndet
+       ; print, ' mode 4 ', npos, ndet, char3
         if (char3 eq '; P') then begin
             npos = npos + 1
             n  = -1 + fix(strmid(string,3,3))
@@ -989,8 +1069,10 @@ while not (eof(lun)) do begin
             ndet = ndet + 1
             slen   = strlen(string) - 1
             clast  = strmid(string, slen, slen)
+            is_net = 0
             if (clast eq 'N') then begin
                 roi = strmid(string, slen-2, slen-1)
+                is_net = 1
             endif else begin
                 roi = strmid(string, slen-1, slen)
             endelse
@@ -999,9 +1081,16 @@ while not (eof(lun)) do begin
             i1  = strpos(string, '{')
             i2  = strpos(string, '}')
             i3  = strpos(string, '-->')
-            det_desc[ndet]=strmid(string, i1+1, i2-i1-1)
+            tmp_desc  = strmid(string, i1+1, i2-i1-1)
+            ilx = strlen(tmp_desc)
+            if (is_net eq 1) and (strmid(tmp_desc, ilx-5,5) ne '(net)') then begin
+                det_desc[ndet] = tmp_desc + ' (net)'
+            endif else begin
+                det_desc[ndet] = tmp_desc
+            endelse
+            
             det_pv[ndet]  =strmid(string, i3+4, strlen(string))
-            ; print , ' ds = ', det_desc[ndet], det_pv[ndet]
+            ; print , ' ds: ', det_desc[ndet],  ' // ', is_net, ilx, strmid(tmp_desc, ilx-5,5) , det_pv[ndet]
             if (strpos(string,'mca') lt 2) then  roi = string
             for i = 0, m_groups - 1 do begin
                 if det_string[i] eq '' then begin
@@ -1017,9 +1106,11 @@ while not (eof(lun)) do begin
                         il  = i1+3 > i2
                         det_name[i] = strmid(det_name[i],il+1,strlen(det_name[i]))
                     endif
+                    ; print , ' -- ', i, det_name[i], ds, i1,i2, roi
                     goto, next_line
                 endif else if(det_string[i] eq roi) then begin
                     group_list[i] = group_list[i] + ' ' + ds
+                    ; print , ' -+-- ', i, det_name[i], ds, i1,i2, roi
                     goto, next_line
                 endif
             endfor
@@ -1027,30 +1118,27 @@ while not (eof(lun)) do begin
     endif else if (read_mode eq 5) then begin ; read data
         if (char1 ne ';') then begin
             npts = npts + 1
-            reads, string, vars            
+            reads, string, vars
+            ;print, ' read mode = 5', string
+            ;print, ' D:: ', npts, nrow, npos
+            ;print, '   vars = ', size(vars)
+            ;print, '   tmp_x= ', size(tmp_x)
             if (nrow lt 0) then nrow = 0
-            if (nrow eq 0) then  tmp_x[npts, 0:npos-1] = vars[0:npos-1]
+            if (nrow eq 0) then  begin
+               tmp_x[npts, 0:npos-1] = vars[0:npos-1]
+            endif
             tmp_det[npts, nrow, 0:ndet-1] = vars[npos:npos+ndet-1]
         endif else if ((dimen eq 2) and (char3 eq ';2D')) then begin
-            nrow = nrow + 1
-            if ((nrow gt 5) and ( ((nrow) mod 10) eq 0)) then print, ";"
-            print, format='(a,i3,$)', '  ' , nrow
-            sc = strmid(string,3, strlen(string))
-            sx = str_sep(strtrim(sc,2), ' ' )
-            tmp_y[nrow] = sx[1]
-            npts_old = npts
-            npts = -1
-            readf, lun, stmp
-            stmp = strtrim(stmp,2)
-            isx  = strpos(stmp,'ended at time:')
-            if (isx gt 1) then  $
-              self.stop_time = strtrim(strmid(stmp,isx+15,strlen(stmp)),2)
-            readf, lun, stmp
-            readf, lun, stmp
+            read_mode = 6
+            tmpline   = strmid(string,3, strlen(string))
+            ; print, ' read mode = 6 ' , tmpline
+            goto, next_line
         endif
-    endif
+    endif 
 next_line:
 endwhile
+
+read_done:
 
 
 dname    = strarr(ngroups+1)
@@ -1059,8 +1147,8 @@ for i = 0, ngroups do begin
     if det_name[i] ne ''  then begin
         dname[i] = strtrim(det_name[i],2)
         g        = strtrim(group_list[i],2)
-        length   = string_array(g, det_list)
-        for j = 0, length-1 do  detectors[det_list[j]-1] = i
+        length   = string_array(g, sums_list)
+        for j = 0, length-1 do  detectors[sums_list[j]-1] = i
     endif
 endfor
 
@@ -1119,19 +1207,19 @@ self.pos_raw   = ptr_new(xa)
 self.pos_names = ptr_new(p_name)
 self.y         = ptr_new(y)
 self.det_names = ptr_new(dname)
-self.det_list  = ptr_new(detectors)
-self.det_orig  = ptr_new(detectors)
+self.sums_list  = ptr_new(detectors)
+self.sums_orig  = ptr_new(detectors)
 
 if (ndet le 0) then ndet = 1
 
 ut = strarr(ndet)
 for i = 0, n_elements(ut)-1 do ut[i] = det_desc[i]
-self.detfull_desc = ptr_new(ut)
+self.det_desc = ptr_new(ut)
 
 ut = strarr(ndet)
 for i = 0, n_elements(ut)-1 do ut[i] = det_pv[i]
-self.detfull_pv   = ptr_new(ut)
-; print, 'size of detfull_pv = ', n_elements(ut), n_elements(*self.detfull_pv)
+self.det_pv   = ptr_new(ut)
+; print, 'size of det_pv = ', n_elements(ut), n_elements(*self.det_pv)
 
 if (ntitles le 0) then begin
     ntitles = 1
@@ -1163,14 +1251,12 @@ function scan_data::read_netcdf_data_file, file
 @scan_dims
 
 M_GROUPS    = 50
-MPVLIST     = 64
+MPVLIST     = 128
 MTITLES     = 16
-MDIM        = 500
 retval = -1
 
 str     = '; '
 print, format='(3a,$)', 'opening file ', file, ' ... '
-
 filetype   = self->filetype(file)
 if (filetype ne 2) then return, retval
 
@@ -1181,6 +1267,12 @@ if (at.datatype ne 'UNKNOWN') then begin
     if (strpos(string(ff), 'Epics Scan: netcdf') ge 0) then retval = -2
 endif
 
+ncdf_attget, ncid, 'version', /global, vers
+
+if (float(string(vers)) lt 1) then begin
+    print, 'This Epics Scan netcdf file is too old. Cannot be used.'
+    return, -1
+endif
 u  = ncdf_inquire(ncid)
 
 dimens = {val:intarr(u.ndims), name:strarr(u.ndims)}
@@ -1189,22 +1281,20 @@ s = ''
 for i = 0, u.ndims - 1 do begin
     ncdf_diminq, ncid, i, s, n
     case s of
-        'string length':   nstr = n
-        'scan dimension':  ndim = n
-        'n positioners':   npos = n
-        'n detectors':     ndet = n
-        'n sums':          nsum = n
-        'n user_titles':   n_ut = n
-        'n pv_list':       n_pv = n
+        'string_length':   nstr = n
+        'scan_dimension':  ndim = n
+        'n_positioners':   npos = n
+        'n_detectors':     ndet = n
+        'n_sums':          nsum = n
+        'n_user_titles':   n_ut = n
+        'n_pv_list':       n_pv = n
         'nx':              nx   = n
         'ny':              ny   = n
-        else: begin
-            print,  ' unknown dimension ', s
-        end
+        'dim1':            nxx1 = n
+        else:  print,  ' unknown dimension ', s
     endcase
 endfor
 
-self.filename    = file
 self.dimension   = ndim
 self.ndetectors  = ndet
 self.npositioners= npos
@@ -1212,34 +1302,34 @@ self.subtitle    = ''
 self.nplot       = 0
 
 s  = ''
-ncdf_varget, ncid, 'user titles', s
+ncdf_varget, ncid, 'user_titles', s
 self.user_titles = ptr_new(string(s))
 
-ncdf_varget, ncid, 'pv list', s
+ncdf_varget, ncid, 'pv_list', s
 self.pv_list = ptr_new(string(s))
 
-ncdf_varget, ncid, 'start time', s
+ncdf_varget, ncid, 'start_time', s
 self.start_time = (string(s))
 
-ncdf_varget, ncid, 'stop time', s
+ncdf_varget, ncid, 'stop_time', s
 self.stop_time = (string(s))
 
-ncdf_varget, ncid, 'x name', s
+ncdf_varget, ncid, 'x_name', s
 self.xpos = (string(s))
 
-ncdf_varget, ncid, 'y name', s
+ncdf_varget, ncid, 'y_name', s
 self.ypos = (string(s))
 
-ncdf_varget, ncid, 'det desc', s
-self.detfull_desc = ptr_new(string(s))
+ncdf_varget, ncid, 'det_desc', s
+self.det_desc = ptr_new(string(s))
 
-ncdf_varget, ncid, 'det pv', s
-self.detfull_pv = ptr_new(string(s))
+ncdf_varget, ncid, 'det_pv', s
+self.det_pv = ptr_new(string(s))
 
-ncdf_varget, ncid, 'sums names', s
+ncdf_varget, ncid, 'sums_names', s
 self.det_names = ptr_new(string(s))
 
-ncdf_varget, ncid, 'pos desc', s
+ncdf_varget, ncid, 'pos_desc', s
 self.pos_names = ptr_new(string(s))
 
 ncdf_varget, ncid, 'x', x
@@ -1248,22 +1338,19 @@ self.x  = ptr_new(x)
 ncdf_varget, ncid, 'y', x
 self.y  = ptr_new(x)
 
-ncdf_varget, ncid, 'sums map', x
-self.det_list  = ptr_new(x)
-self.det_orig = self.det_list
-
 ncdf_varget, ncid, 'positioners', x
 self.pos_raw = ptr_new(x)
 
 ncdf_varget, ncid, 'detectors', x
 self.raw  = ptr_new(x)
 
-ncdf_varget, ncid, 'det sums', x
+ncdf_varget, ncid, 'sums', x
 self.sums = ptr_new(x)
 
-; ncdf_varput, ncid, 'positioners', (*self.pos_raw)
-; ncdf_varput, ncid, 'det sums',    (*self.sums)
-; ncdf_varput, ncid, 'detectors',   (*self.raw)
+ncdf_varget, ncid, 'sums_list', x
+self.sums_list  = ptr_new(x)
+
+self.sums_orig = self.sums_list
 
 ncdf_close, ncid
 retval = 0
@@ -1276,77 +1363,82 @@ pro      scan_data::save_netcdf, file=file
 ; save current data structure to a netcdf file
 ;
 ; things not saved to netcdf file:
-;  filename, subtitle, plot_colors, nplot, det_orig
+;  filename, subtitle, plot_colors, nplot, sums_orig
 
 
-if (keyword_set(file)  eq 0)  then file = self.filename + '.nc'
+if (keyword_set(file)  eq 0)  then file = self.filename + '.ncd'
+
+on_ioerror, done
 ncid    = ncdf_create(file, /clobber)
 ;
-ncdf_attput, ncid, /global, 'title', 'Epics Scan: netcdf version 0.1'
+ncdf_attput, ncid, /global, 'title', 'Epics Scan: netcdf'
+ncdf_attput, ncid, /global, 'version', '1.0'
 
 ;
 ; max string size
 str_max = 48
-str_max = max(str_max > max(strlen((*self.detfull_pv))) > max(strlen((*self.detfull_desc))))
+str_max = max(str_max > max(strlen((*self.det_pv))) > max(strlen((*self.det_desc))))
 str_max = max(str_max > max(strlen((self.start_time)))  > max(strlen((self.stop_time))))
 str_max = max(str_max > max(strlen((*self.pv_list)))    > max(strlen((*self.user_titles))))
 str_max = max(str_max > max(strlen((*self.pos_names)))  > max(strlen((*self.det_names))))
 str_max = 8 * (1 + fix(str_max+1)/8) 
 
-nstr = ncdf_dimdef(ncid, 'string length',  str_max)
-ndim = ncdf_dimdef(ncid, 'scan dimension', self.dimension)
-npos = ncdf_dimdef(ncid, 'n positioners',  self.npositioners)
-ndet = ncdf_dimdef(ncid, 'n detectors',    self.ndetectors)
-nsum = ncdf_dimdef(ncid, 'n sums',         n_elements(*self.det_names))
-n_ut = ncdf_dimdef(ncid, 'n user_titles',  n_elements(*self.user_titles))
-n_pv = ncdf_dimdef(ncid, 'n pv_list',      n_elements(*self.pv_list))
+n1   = ncdf_dimdef(ncid, 'dim1',  1)
+nstr = ncdf_dimdef(ncid, 'string_length',  str_max)
+ndim = ncdf_dimdef(ncid, 'scan_dimension', self.dimension)
+npos = ncdf_dimdef(ncid, 'n_positioners',  self.npositioners)
+ndet = ncdf_dimdef(ncid, 'n_detectors',    self.ndetectors)
+nsum = ncdf_dimdef(ncid, 'n_sums',         n_elements(*self.det_names))
+n_ut = ncdf_dimdef(ncid, 'n_user_titles',  n_elements(*self.user_titles))
+n_pv = ncdf_dimdef(ncid, 'n_pv_list',      n_elements(*self.pv_list))
 nx   = ncdf_dimdef(ncid, 'nx',             n_elements(*self.x))
 ny   = ncdf_dimdef(ncid, 'ny',             n_elements(*self.y))
 
-id   = ncdf_vardef(ncid, 'user titles', [nstr,n_ut], /char)
-id   = ncdf_vardef(ncid, 'pv list',     [nstr,n_pv], /char)
-id   = ncdf_vardef(ncid, 'start time',  [nstr],      /char)
-id   = ncdf_vardef(ncid, 'stop time',   [nstr],      /char)
-id   = ncdf_vardef(ncid, 'x',           [nx],        /float)
-id   = ncdf_vardef(ncid, 'y',           [ny],        /float)
-id   = ncdf_vardef(ncid, 'x name',      [nstr],      /char)
-id   = ncdf_vardef(ncid, 'y name',      [nstr],      /char)
-id   = ncdf_vardef(ncid, 'positioners', [nx,npos],   /float)
-id   = ncdf_vardef(ncid, 'pos desc',    [nstr,npos], /char)
-id   = ncdf_vardef(ncid, 'det desc',    [nstr,ndet], /char)
-id   = ncdf_vardef(ncid, 'det pv',      [nstr,ndet], /char)
-id   = ncdf_vardef(ncid, 'sums names',  [nstr,nsum], /char)
-id   = ncdf_vardef(ncid, 'sums map',    [ndet],      /short)
+id   = ncdf_vardef(ncid, 'user_titles', [nstr,n_ut], /char)
+id   = ncdf_vardef(ncid, 'pv_list',     [nstr,n_pv], /char)
+id   = ncdf_vardef(ncid, 'start_time',  [nstr],      /char)
+id   = ncdf_vardef(ncid, 'stop_time',   [nstr],      /char)
+id   = ncdf_vardef(ncid, 'x',           [nx],        /double)
+id   = ncdf_vardef(ncid, 'y',           [ny],        /double)
+id   = ncdf_vardef(ncid, 'x_name',      [nstr],      /char)
+id   = ncdf_vardef(ncid, 'y_name',      [nstr],      /char)
+id   = ncdf_vardef(ncid, 'positioners', [nx,npos],   /double)
+id   = ncdf_vardef(ncid, 'pos_desc',    [nstr,npos], /char)
+id   = ncdf_vardef(ncid, 'det_desc',    [nstr,ndet], /char)
+id   = ncdf_vardef(ncid, 'det_pv',      [nstr,ndet], /char)
+id   = ncdf_vardef(ncid, 'sums_names',  [nstr,nsum], /char)
+id   = ncdf_vardef(ncid, 'sums_list',    [ndet],      /short)
 
 if (self.dimension ge 2) then begin
-    id = ncdf_vardef(ncid, 'detectors',   [nx,ny,ndet], /float)
-    id = ncdf_vardef(ncid, 'det sums',    [nx,ny,nsum], /float)
+    id = ncdf_vardef(ncid, 'detectors',   [nx,ny,ndet], /double)
+    id = ncdf_vardef(ncid, 'sums',        [nx,ny,nsum], /double)
 endif else begin
-    id = ncdf_vardef(ncid, 'detectors',   [nx,ndet],   /float)
-    id = ncdf_vardef(ncid, 'det sums',    [nx,nsum],   /float)
+    id = ncdf_vardef(ncid, 'detectors',   [nx,ndet],   /double)
+    id = ncdf_vardef(ncid, 'sums',        [nx,nsum],   /double)
 endelse
 
 ncdf_control, ncid, /endef
 
-ncdf_varput, ncid, 'user titles', (*self.user_titles)
-ncdf_varput, ncid, 'pv list',     (*self.pv_list)
-ncdf_varput, ncid, 'start time',  (self.start_time)
-ncdf_varput, ncid, 'stop time',   (self.stop_time)
+ncdf_varput, ncid, 'user_titles', (*self.user_titles)
+ncdf_varput, ncid, 'pv_list',     (*self.pv_list)
+ncdf_varput, ncid, 'start_time',  (self.start_time)
+ncdf_varput, ncid, 'stop_time',   (self.stop_time)
+ncdf_varput, ncid, 'x_name',      (self.xpos)
+ncdf_varput, ncid, 'y_name',      (self.ypos)
+ncdf_varput, ncid, 'pos_desc',    (*self.pos_names)
+ncdf_varput, ncid, 'det_desc',    (*self.det_desc)
+ncdf_varput, ncid, 'det_pv',      (*self.det_pv)
+ncdf_varput, ncid, 'sums_names',  (*self.det_names)
 ncdf_varput, ncid, 'x',           (*self.x)
 ncdf_varput, ncid, 'y',           (*self.y)
-ncdf_varput, ncid, 'x name',      (self.xpos)
-ncdf_varput, ncid, 'y name',      (self.ypos)
 ncdf_varput, ncid, 'positioners', (*self.pos_raw)
-ncdf_varput, ncid, 'det desc',    (*self.detfull_desc)
-ncdf_varput, ncid, 'det pv',      (*self.detfull_pv)
-ncdf_varput, ncid, 'sums names',  (*self.det_names)
-ncdf_varput, ncid, 'sums map',    (*self.det_list)
-ncdf_varput, ncid, 'pos desc',    (*self.pos_names)
-ncdf_varput, ncid, 'det sums',    (*self.sums)
 ncdf_varput, ncid, 'detectors',   (*self.raw)
+ncdf_varput, ncid, 'sums',        (*self.sums)
+ncdf_varput, ncid, 'sums_list',   (*self.sums_list)
 
 ncdf_close, ncid
 ;
+done:
 
 return
 end
@@ -1370,7 +1462,7 @@ if (keyword_set(par) ne 0) then begin
         'ypos':         self.ypos         = val
         'det_names':    (*self.det_names) = val
         'pos_names':    (*self.pos_names) = val
-        'det_list':     (*self.det_list)  = val
+        'sums_list':    (*self.sums_list)  = val
         'plot_colors':  (*self.plot_colors)  = val
     endcase
 endif
@@ -1397,10 +1489,11 @@ if (keyword_set(par) ne 0) then begin
         'ypos':         val = self.ypos
         'pos_names':    val = (*self.pos_names)
         'det_names':    val = (*self.det_names)
-        'det_list':     val = (*self.det_list)
-        'det_orig':     val = (*self.det_orig)
-        'detfull_desc': val = (*self.detfull_desc)
-        'detfull_pv':   val = (*self.detfull_pv)
+
+        'sums_list':    val = (*self.sums_list)
+        'sums_orig':    val = (*self.sums_orig)
+        'det_desc':     val = (*self.det_desc)
+        'det_pv':       val = (*self.det_pv)
         'pv_list':      val = (*self.pv_list)
         'plot_colors':  val = (*self.plot_colors)
         'user_titles':  val = (*self.user_titles)
@@ -1535,7 +1628,7 @@ print, ' dimension       scan dimension'
 print, ' raw_data        complete set of raw detector data  '
 print, ' sums            summed detectors, grouped by detector element '
 print, ' det_names       names for summed detector groups'
-print, ' det_list        2d integer array list of raw detectors for sums'
+print, ' sums_list        2d integer array list of raw detectors for sums'
 print, ' x               array of x positions '
 print, ' y               array of y positions (for 2d scans)'
 print, ' xpos            name of x positioner'
@@ -1547,13 +1640,20 @@ end
 
 pro      scan_data::show_detectors
 n =  n_elements(*self.det_names) 
-
 print, format='(a,$)', '[  '
 for i = 0, n - 2 do begin
-    print, format='(a,a,$)', (*self.det_names)[i], ', '
+    print, format='(a,a,$)', strtrim((*self.det_names)[i],2), ', '
 endfor
-print, format='(a,a)', (*self.det_names)[n-1], ' ]'
+print, format='(a,a)', strtrim((*self.det_names)[n-1],2), ' ]'
 return
+end
+
+function  scan_data::detector_names
+    return, *self.det_names
+end
+
+function  scan_data::detector_desc
+    return, *self.det_desc
 end
 
 
@@ -1562,9 +1662,9 @@ function scan_data::init, file=file
 cols = ['blue', 'red', 'black', 'magenta', 'forestgreen']
 self.plot_colors =   ptr_new(cols)
 
-
 if (n_elements(file) ne 0) then begin
-    u = self->read_data_file(file)
+    fx = file
+    u  = self->read_data_file(fx)
 endif
 return, 1
 end
@@ -1615,7 +1715,7 @@ pro      scan_data__define
 ;
 ;
 ; EXAMPLE:
-;       data = obj_new('scan_data', 'my_data_file.001')
+;       data = obj_new('scan_data', file='my_data_file.001')
 ;       data->read_scan_file('my_data_file.001')
 ;
 ; MODIFICATION HISTORY:
@@ -1631,8 +1731,8 @@ scan_data = { scan_data, filename:   ' ', dimension: 1, $
               raw:  p, sums:p,  plot_colors:p, nplot:0, $
               x: p, y: p,  xpos: '', ypos:'', $
               start_time:'', stop_time:'', $
-              detfull_desc:p,  detfull_pv:p, $
+              det_desc:p,    det_pv:p, $
               pos_names: p,  det_names: p, $
-              det_list: p, det_orig: p} 
+              sums_list: p,   sums_orig: p} 
 
 end

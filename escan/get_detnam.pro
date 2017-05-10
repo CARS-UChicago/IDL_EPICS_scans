@@ -39,7 +39,7 @@ pref = pre_
 ; pref = pre_ + type_ + s_elem
 ; _now_ (and only after pref is made!) rewrite type_ to make all mca-like 
 ; detectors look the same
-if ((type_ eq 'aim_adc') or (type_ eq 'med:mca')) then type_ = 'mca'
+if ((type_ eq 'med:mca')) then type_ = 'mca'
 ; print, ' GET_DETNAM: ', pre_ ,   ' :: ',  type_ , '::', s_elem, roi, net_
 case type_ of 
     'scaler': begin
@@ -52,10 +52,27 @@ case type_ of
     'mca': begin
         s_roi     = strtrim(string(roi_ ,format='(i1.1)'),2) 
         if (roi_ gt 9) then s_roi  = strtrim(string(roi_ ,format='(i2.2)'),2) 
+;         out.descPV  = pref + 'mca' + s_elem + '.R'  + s_roi + 'NM'
+;         out.countPV = pref + 'mca' + s_elem + '.R'  + s_roi 
+        out.descPV  = pref +  '.R'  + s_roi + 'NM'
+        out.countPV = pref +  '.R'  + s_roi 
+        if (net_ eq 1) then out.countPV = out.countPV + 'N'
+    end
+    'med': begin
+        s_roi     = strtrim(string(roi_ ,format='(i1.1)'),2) 
+        if (roi_ gt 9) then s_roi  = strtrim(string(roi_ ,format='(i2.2)'),2) 
         out.descPV  = pref + 'mca' + s_elem + '.R'  + s_roi + 'NM'
         out.countPV = pref + 'mca' + s_elem + '.R'  + s_roi 
         if (net_ eq 1) then out.countPV = out.countPV + 'N'
     end
+    'aim_adc': begin
+        s_roi     = strtrim(string(roi_ ,format='(i1.1)'),2) 
+        if (roi_ gt 9) then s_roi  = strtrim(string(roi_ ,format='(i2.2)'),2) 
+        out.descPV  = pref +  '.R'  + s_roi + 'NM'
+        out.countPV = pref +  '.R'  + s_roi 
+        if (net_ eq 1) then out.countPV = out.countPV + 'N'
+    end
+
 endcase
 ; look up description
 ; print, ' OUT  : ', out.descPV

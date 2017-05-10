@@ -39,12 +39,12 @@ if (isca ge 2) then begin
     if ((x lt 0)  or (desc eq '')) then desc  = det
 endif else begin
 ; MED or adc
-    imed = strpos(det,'med:mca')
-    iadc = strpos(det,'aim_adc')
-    if ((imed ge 2) or (iadc ge 2)) then begin
-        iel = imed > iadc
-        pre = strmid(det,0,iel+8)
-        tmp = strmid(det,iel+8,strlen(det))
+    imca = strpos(det,'mca')
+    if (imca ge 1)  then begin
+        iel = imca
+        pre = strmid(det,0,imca+4)
+        tmp = strmid(det,imca+4,strlen(det))
+        ; print, 'mca:  ', det , ' --- ', imca, pre, ' --- ', tmp
         if  ( strmid(tmp,strlen(tmp)-1,1)  eq 'N') then begin
             net = 1
             tmp = strmid(tmp,0,strlen(tmp)-1)
@@ -53,13 +53,13 @@ endif else begin
         x   = caget(dpv,desc)
         desc = strtrim(desc,2)
         if ((x lt 0)  or (desc eq '')) then desc  = det
-        if (imed eq iel) then begin
-            tmp = strmid(det,iel+4,strlen(det))
-            ids = strpos(tmp,'.')
-            if ((desc ne dpv) and (ids ge 1)) then $
-              desc = strmid(tmp,0,ids) + ': ' + desc
-;;;               desc = desc + ' [' + strmid(tmp,0,ids) + ']'
-        endif
+;         if (imed eq iel) then begin
+;             tmp = strmid(det,iel+4,strlen(det))
+;             ids = strpos(tmp,'.')
+;             if ((desc ne dpv) and (ids ge 1)) then $
+;               desc = strmid(tmp,0,ids) + ': ' + desc
+; ;;;               desc = desc + ' [' + strmid(tmp,0,ids) + ']'
+;        endif
     endif else begin
         ival = strpos(det,'.VAL')
         if (ival ge 2) then begin
