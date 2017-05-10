@@ -39,6 +39,8 @@ function get_string, prompt, value
 ;       Created November, 1990 by Mark Rivers
 ;       Added error checking October 23, 1991 - Mark Rivers
 ;       Made input on a new line if the default string is >20 characters
+;       Changed from 'q' format to using strlen.  The 'q' format was causing
+;       a Dr. Watson in Windows, for reasons we could never determine.
 ;-
 
 on_ioerror, try_again
@@ -49,7 +51,8 @@ endif else begin
   print, prompt+' ['+value+']', format="(a)"
 endelse
 string = ''
-read, format='(q,a)', nc, string
+read, string
+nc = strlen(string)
 if nc gt 0 then begin
   return, string
 endif else begin

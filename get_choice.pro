@@ -50,13 +50,16 @@ function get_choice, prompt, choices, current
 ; MODIFICATION HISTORY:
 ;       Created November, 1990 by Mark Rivers
 ;       Added error checking October 23, 1991 - Mark Rivers
+;       4-Mar-2002 MLR Changed from 'q' format to using strlen because
+;       of bug in IDL 5.5 on Windows.
 ;-
 
 on_ioerror, try_again
 try_again:
 print, prompt+' ['+choices(current)+']', format="(a,$)"
-string = ' '
-read, format='(q,a)', nc, string
+string = ''
+read, string
+nc = strlen(string)
 if nc eq 0 then return, current
 ; The user entered a value, see if it is a valid option
 n_choice = n_elements(choices)

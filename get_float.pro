@@ -43,6 +43,8 @@ function get_float, prompt, value, min = min, max = max
 ;       Created November, 1990 by Mark Rivers
 ;       Added error checking October 23, 1991 - Mark Rivers
 ;       Added min and max check September 4, 1992 - Harvey Rarback
+;       4-Mar-2002 MLR Changed from 'q' format to using strlen because
+;       of bug in IDL 5.5 on Windows.
 ;-
 
 deflt = float(value)
@@ -52,8 +54,9 @@ try_again:
 if not ok then print, string( 7B)
 print, prompt + ' [', deflt, ']', format='(a,g0.0,a,$)'
 ok = 0
-string = ' '
-read, format='(q,a)', nc, string
+string = ''
+read, string
+nc = strlen(string)
 if nc gt 0 then begin
   temp = float(string)
   if n_elements( min) ne 0 then begin
