@@ -1238,7 +1238,9 @@ pro epics_motor::wait, delay, ignore_limits=ignore_limits
 ;-
 
 if (n_elements(delay) eq 0) then delay=.1
-repeat wait, delay until (self->done(ignore_limits=ignore_limits) ne 0)
+while self->done(ignore_limits=ignore_limits) eq 0 do begin
+  wait, delay
+endwhile
 end
 
 
